@@ -2,7 +2,7 @@
 
 対象: `slides.md` → PowerPoint で編集できる PPTX。向きは一方向。
 前提の版: PptxGenJS 4.0.1、jszip 3.10.2、Slidev 52.19.1、playwright-chromium 1.63。
-調査記録 `wip/research/summary.md` の「設計に効く制約」を守る。制約に反する箇所が出たら
+調査記録 `wip/research/summary.md` の「設計に効く制約」に従う。制約に反する箇所が出たら
 制約の側を再調査して直す（§10 に 1 件ある）。用語は `CONTEXT.md` に従う。部品側の設計は `ppt-components.md`。
 
 判断ごとに「得るもの / 失うもの」を併記する。実装前に確かめる項目は末尾の「要確認」に集める。
@@ -229,7 +229,7 @@ XML は文字列置換ではなく DOM（`@xmldom/xmldom`）で触る。
 
 変換 1 が図形の名前を確定させる理由: PptxGenJS は placeholder 指定の `addText` で、呼び出し側の `objectName` をレイアウト側の名前（`Text 0`）で上書きする（`pptxgen.cjs.js` L2537。実測でタイトル枠が `name="Text 0"` になり、同じスライドの自動追加 body も `Text 0` で重複した）。つまり `objectName` は自由配置の図形にしか効かない。そこで名前は API に頼らず、**生成時に記録した順序**で後処理が付け直す。`_slideObjects` は add 呼び出しの順で書かれ、自動追加 placeholder はその後ろに付くので、順序は Node 側で確定できる。
 
-`ppt/notesSlides/*.xml` は変換 1 の対象外。PptxGenJS はノートの `cNvPr id` を一意に出す（実測で 1〜4）。C6 はノートも検査するが保険で、鳴ったら変換 1 の対象に足す。
+`ppt/notesSlides/*.xml` は変換 1 の対象外。PptxGenJS はノートの `cNvPr id` を一意に出す（実測で 1〜4）。C6 はノートも検査するが保険で、error が出たら変換 1 の対象に足す。
 
 - 順番は 1 → 7 で固定。名前で図形を引く変換（4、将来のアニメーション）は 1 の後。7 は最後。将来の追加（グループ化 `<p:grpSp>`、`<p:timing>`、`<p:transition>`、`<a:latin>` の書き分け）は 3 と 6 の間。
 - 得るもの: 各変換は前の変換の結果だけを前提にすればよい。
@@ -403,7 +403,7 @@ Slidev の `.slidev-layout` は `px-14 py-10`（左右 56 px、上下 40 px）�
 
 placeholder の位置は**固定**で、実測しない。PptxGenJS は placeholder 指定時にレイアウトの座標を明示した座標より優先する（`pptxgen.cjs.js` L5151-5159）。
 - 得るもの: PowerPoint 側で「レイアウトのリセット」「新しいスライド」が意味を持つ。アウトライン表示とアクセシビリティ検査がタイトルを認識する。
-- 失うもの: Slidev で縦中央に置かれた表紙の位置や、`layoutClass: gap-8` の 2 段組の列幅（左 418 px、右は 506 px から）は、表の固定値（434 / 490）から最大 16 px ずれる。位置を Slidev に合わせたくなったら、後処理に「placeholder の `<a:xfrm>` を実測値で上書きする」変換を足す（この設計では入れない）。
+- 失うもの: Slidev で縦中央に置かれた表紙の位置や、`layoutClass: gap-8` の 2 段組の列幅（左 418 px、右は 506 px から）は、表の固定値（434 / 490）から最大 16 px ずれる。位置を Slidev に合わせる必要が出たら、後処理に「placeholder の `<a:xfrm>` を実測値で上書きする」変換を足す（この設計では入れない）。
 - 表にない `section` `quote` `image-right` `fact` `statement` `intro` `end` などは `blank` で、見出しも本文も自由配置（実測）のテキスト枠になる。
 
 ### 5.3 マスターの定義
@@ -443,7 +443,7 @@ run に `fontFace` を付けている限り、差し替え後もフォントは�
 - `frontmatter.background`（theme-default の `cover` `intro` が使う）は Node 側で `handleBackground` と同じ分岐をする: 値が `#` `rgb` `hsl` で始まれば**色**として `slide.background = { color }`（fetch も矩形も無し）。それ以外は**画像**として fetch し `slide.background = { data }`。
 - 画像のとき、`handleBackground` は `linear-gradient(#0005, #0008), url(...)` で暗くする重ね（黒の不透明度 33〜53%）を入れ、文字を白にする。同じ見え方にするため、背景画像があるスライドには spTree の**最初の図形として**全面の矩形 `{ color: '000000', transparency: 55 }`（不透明度 45%）を置く。名前は `Background dim`（§4.5 の列の先頭に入れる）。
   - 得るもの: 白い文字が読める。
-  - 失うもの: PowerPoint で背景を替えたい人は、矩形も一緒に消す必要がある。名前で分かるようにしておく。また Slidev は `background-size: cover`（切り取り）だが、PptxGenJS の背景は `<a:stretch><a:fillRect/>`（引き伸ばし）なので、縦横比が 16:9 でない画像は歪む。歪みを避けたければ Node 側で 16:9 に切り出してから渡す（今回はやらない。`Report.dropped['background-crop']` に件数を出す）。
+  - 失うもの: PowerPoint で背景を替えたい人は、矩形も併せて消す必要がある。名前で分かるようにしておく。また Slidev は `background-size: cover`（切り取り）だが、PptxGenJS の背景は `<a:stretch><a:fillRect/>`（引き伸ばし）なので、縦横比が 16:9 でない画像は歪む。歪みを避けたければ Node 側で 16:9 に切り出してから渡す（今回はやらない。`Report.dropped['background-crop']` に件数を出す）。
 - `image-right` など、`.slidev-layout` の外の `background-image` は ppt-components.md §2.2 の規則で画像要素になる。`background-image` が `url()` を含まない（グラデーションだけ）なら画像への置き換え（`reason: 'gradient'`）。
 
 ---
@@ -589,7 +589,7 @@ packages/slidev-addon-pptx/
 | `write()` は無圧縮 | 後処理の再圧縮で DEFLATE |
 | 公開 API は `resolveOptions` `createServer` `parser` のみ | §1.2。`go()` は写す |
 | export モードでしか `/print` が無い | §1.2 |
-| レイアウト名の決定規則。**「DOM の class から読むほうが確実」** | §5.1。**この制約は調査の見立てが誤り。** `two-cols` の class は `two-columns`、`image-right` は `.slidev-layout.default` を内包するので、class から名前は引けない。Node 側で `getLayouts()` を使って解く。`wip/research/summary.md` §3 のこの 1 文の修正を親に依頼する（このチケットの `allow` は `wip/design/*` と `docs/adr/*` のみ） |
+| レイアウト名の決定規則。**「DOM の class から読むほうが確実」** | §5.1。**この制約は調査の見立てが誤り。** `two-cols` の class は `two-columns`、`image-right` は `.slidev-layout.default` を内包するので、class から名前は決められない。Node 側で `getLayouts()` を使って解く。`wip/research/summary.md` §3 のこの 1 文の修正を親に依頼する（このチケットの `allow` は `wip/design/*` と `docs/adr/*` のみ） |
 | クリック数は描画後 | 今回は `?print=true` 1 枚で不要 |
 | 実測は `.print-slide-container` 基準、`zoom` の scale | §2、ppt-components.md §2.3（rect はそのまま、computed の長さに `zoom` を掛ける） |
 | キャンバス高さ 551/552 | §4.1 |
