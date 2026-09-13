@@ -1,8 +1,11 @@
 // テストから PPTX（ZIP）と XML を読む共通の道具。実装（packages/）には依存しない。
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import JSZip from 'jszip'
 import { DOMParser } from '@xmldom/xmldom'
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 export const NS = {
   p: 'http://schemas.openxmlformats.org/presentationml/2006/main',

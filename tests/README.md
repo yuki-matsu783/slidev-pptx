@@ -44,9 +44,26 @@ pnpm vitest run -c tests/vitest.e2e.config.ts    # e2e と CLI（playwright-chro
 `src/opc/check.ts`: `check`
 `src/export.ts`: `exportPptx({ entry, output, range?, lang?, check?, report? })`
 
-検査が前提にしている引数の形（設計に無い部分。実装が変えるなら検査も直す）:
-- `build(capture, data, { assets: Record<captureId, dataUrl>, lang })` → `{ pptx, ctx }`
-- `clampBox(box, canvas)` → `{ box, shift, dropped }`
-- `assignNames(elements, confirmedRoles: Map<id, 'title' | 'body' | 'body2'>, hasBackgroundDim)` → `string[]`
+検査が前提にしている引数の形と、設計に無い細部（実装が別解を選ぶなら検査を直す。設計に書き戻すべきものは design-feedback へ）:
+- `build(capture, data, { assets: Record<captureId, dataUrl>, lang, layouts: string[] })` → `{ pptx, ctx }`。`layouts` は `options.utils.getLayouts()` のキー一覧
+- `clampBox(box, canvas)` → `{ box, shift, dropped }`。`shift` は寄せた量と縮めた量の最大値
+- `assignNames(elements, confirmedRoles: Map<id, 'title' | 'body' | 'body2'>, hasBackgroundDim)` → `string[]`。`Placeholder N` の N は spTree の 1 始まりの位置
 - `resolveLayout(slideIndex, data, layoutNames: string[])` → レイアウト名
-- `emu(px, canvas)` `pt(px, canvas)` `inch(px, canvas)` `textMargin(inset, canvas)` `cellMargin(inset, canvas)`
+- `emu(px, canvas)` `pt(px, canvas)` `inch(px, canvas)` `textMargin(inset, canvas)` `cellMargin(inset, canvas)` `toDashType(dash)`
+- `defineMasters` は `LAYOUTS` の写しを PptxGenJS に渡す（`createSlideMaster` が options を破壊するため）
+- `sanitizeXmlText` は XML 1.0 で合法な DEL / C1（0x7F–0x9F）も落とす
+- `notesText` は字下げ後の `- ` も `• ` にし、CRLF を LF にし、`undefined` を空文字にする
+- `findRelByType` は `slideLayout` のような短い名前でも完全な URI でも引ける
+- `two-cols` の `body2` placeholder の `type` は `body`
+- CLI: entry が無ければ exit 1（引数の綴りは合っているので 2 ではない）
+- `W-CSS` の message には捨てた property 名（`shadow` など）を含める
+- `collect` は 1 関数の中に閉じる（Playwright は関数を文字列化して渡すので、モジュール先頭の定数やヘルパを参照できない）
+- `Capture.canvas.height` は `.print-slide-container` の rect のまま（551〜552。丸め規則は設計に無い）
+- `dropped['code-highlight']` の単位（ブロックか行か）は設計に無いので、検査は下限だけ見る
+- e2e の viewport は Slidev と同じ「980 × 552 × 枚数」。待機列は `native-export.md` §1.2 を写した（`tests/e2e/helpers.ts`）
+
+## フェーズ 4 で最初に確かめること
+
+- vitest が `tests/**` を ESM として動かすとき `import.meta.url` が取れること（`__dirname` は使っていない）
+- `page.evaluate(collect)` の直列化（上の「1 関数の中に閉じる」）
+- `plain.md` の枚数は `tests/e2e/slides.ts` の `SLIDE_COUNT`（12）。`@slidev/parser` は `---` で始まる行を無条件に区切りにするので、水平線は `***` で書いてある

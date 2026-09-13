@@ -132,6 +132,12 @@
           "id": "s2-e9", "name": "", "source": "replaced", "kind": "image",
           "box": { "x": 400, "y": 420, "w": 200, "h": 60 }, "boxSource": "measured",
           "captureId": "s2-e9", "reason": "math"
+        },
+        {
+          "id": "s2-e10", "name": "", "source": "markdown", "kind": "image",
+          "box": { "x": 700, "y": 40, "w": 200, "h": 40 }, "boxSource": "measured",
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+          "fit": "fill", "alt": "引き伸ばし"
         }
       ],
       "warnings": [ { "code": "W-MATH-INLINE", "elementId": "s2-e2", "message": "inline math flattened" } ]

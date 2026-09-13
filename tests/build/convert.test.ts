@@ -20,7 +20,7 @@ let rels: Record<number, Document> = {}
 
 beforeAll(async () => {
   const capture = captureJson as unknown as Capture
-  const r = await build(capture, dataJson, { assets: { 's2-e9': PNG_1x1 }, lang: 'ja-JP' })
+  const r = await build(capture, dataJson, { assets: { 's2-e9': PNG_1x1 }, lang: 'ja-JP', layouts: dataJson.layouts })
   ctx = r.ctx
   p = await openPptx(await r.pptx.write({ outputType: 'nodebuffer' }) as Buffer)
   for (let i = 1; i <= 5; i++) {
@@ -189,9 +189,12 @@ describe('convert: 画像・図形・線（§4.3）', () => {
     const rid = link.getAttribute('r:id') ?? link.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id')!
     expect(relTarget(rels[2], rid)).toBe('https://example.com/photo')
   })
-  it("fit: 'cover' は sizing、'fill' は sizing 無し（write が落ちないこと）", () => {
-    const pic = els(slide[2], 'p', 'pic').find((x) => cNvPrOf(x).getAttribute('descr') === '写真')!
-    expect(els(pic, 'a', 'srcRect').length + els(pic, 'a', 'stretch').length).toBeGreaterThan(0)
+  it("fit: 'cover' は sizing（srcRect が出る）、'fill' は sizing 無し（stretch/fillRect だけ。write が落ちないこと）", () => {
+    const cover = els(slide[2], 'p', 'pic').find((x) => cNvPrOf(x).getAttribute('descr') === '写真')!
+    expect(els(cover, 'a', 'srcRect')).toHaveLength(1)
+    const fill = els(slide[2], 'p', 'pic').find((x) => cNvPrOf(x).getAttribute('descr') === '引き伸ばし')!
+    expect(els(fill, 'a', 'srcRect')).toHaveLength(0)
+    expect(els(fill, 'a', 'fillRect')).toHaveLength(1)
   })
   it('文字のある図形: prstGeom、文字、要素リンクは run に写り、cNvPr には無い、dash dot → sysDot', () => {
     const arrow = shapesOf(slide[2]).find((s) => cNvPrOf(s).getAttribute('name') === 'arrow')!
@@ -213,16 +216,16 @@ describe('convert: 画像・図形・線（§4.3）', () => {
     expect(els(line, 'a', 'xfrm')[0].hasAttribute('flipV')).toBe(false)
     expect(els(line, 'a', 'srgbClr').some((c) => c.getAttribute('val') === 'CCCCCC')).toBe(true)
   })
-  it('置き換え画像: assets の PNG が pic として入る', () => {
+  it('置き換え画像: assets の PNG が pic として入る（写真 + 引き伸ばし + 置き換え = 3）', () => {
     const pics = els(slide[2], 'p', 'pic')
-    expect(pics).toHaveLength(2)
+    expect(pics).toHaveLength(3)
   })
   it('assets に無い置き換えは灰色の矩形 + W-IMAGE', async () => {
     const capture = captureJson as unknown as Capture
-    const r = await build(capture, dataJson, { assets: {}, lang: 'ja-JP' })
+    const r = await build(capture, dataJson, { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
     expect(r.ctx.report.warnings.some((w) => w.code === 'W-IMAGE' && w.slide === 2)).toBe(true)
     const q = await openPptx(await r.pptx.write({ outputType: 'nodebuffer' }) as Buffer)
-    expect(els(await q.xml('ppt/slides/slide2.xml'), 'p', 'pic')).toHaveLength(1)
+    expect(els(await q.xml('ppt/slides/slide2.xml'), 'p', 'pic')).toHaveLength(2)
   })
 })
 
@@ -248,8 +251,18 @@ describe('convert: 背景（§5.5）', () => {
 describe('convert: PatchContext と Report（§4.5、§3.3、§8）', () => {
   it('shapeNames は add した順（Background dim → 要素）', () => {
     expect(ctx.shapeNames[1]).toEqual(['Background dim', 'Title', 'Body'])
-    expect(ctx.shapeNames[2]).toEqual(['Title', 'Body', 'Text 3', 'Table 4', 'photo', 'arrow', 'Shape 7', 'Line 8', 'Replaced 9'])
+    expect(ctx.shapeNames[2]).toEqual(['Title', 'Body', 'Text 3', 'Table 4', 'photo', 'arrow', 'Shape 7', 'Line 8', 'Replaced 9', 'Image 10'])
     expect(ctx.shapeNames[3]).toEqual(['Title', 'Body 2', 'Text 3'])
+  })
+  it('spTree の図形数は shapeNames の長さ以上で、先頭から順に対応する（§4.5 の前提。表・画像・図形が混ざる場合。§11 の 6）', () => {
+    for (const no of [1, 2, 3]) {
+      const shapes = shapesOf(slide[no])
+      expect(shapes.length).toBeGreaterThanOrEqual(ctx.shapeNames[no].length)
+      // 後処理前なので name は PptxGenJS の採番のまま。種類の並びで対応を確かめる
+      const kinds = shapes.slice(0, ctx.shapeNames[no].length).map((s) => s.localName)
+      const expected = ctx.shapeNames[no].map((n) => (/^(Table)/.test(n) ? 'graphicFrame' : /^(Image|Replaced|photo)/.test(n) ? 'pic' : 'sp'))
+      expect(kinds).toEqual(expected)
+    }
   })
   it('縮小率: contentHeight 900 > boxHeight 472 → fontScale floor(472/900×100)×1000 = 52000、lnSpcReduction 20000、W-OVERFLOW', () => {
     expect(ctx.autofit[3]['Body 2']).toEqual({ fontScale: 52000, lnSpcReduction: 20000 })
@@ -261,9 +274,9 @@ describe('convert: PatchContext と Report（§4.5、§3.3、§8）', () => {
     big.fit = { contentHeight: 4720, boxHeight: 472 }
     const small = structuredClone(captureJson) as unknown as Capture
     ;(small.slides[2].elements[1] as { fit: { contentHeight: number; boxHeight: number } }).fit = { contentHeight: 500, boxHeight: 472 }
-    const a = await build(capture, dataJson, { assets: {}, lang: 'ja-JP' })
+    const a = await build(capture, dataJson, { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
     expect(a.ctx.autofit[3]['Body 2']).toEqual({ fontScale: 25000, lnSpcReduction: 20000 })
-    const b = await build(small, dataJson, { assets: {}, lang: 'ja-JP' })
+    const b = await build(small, dataJson, { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
     expect(b.ctx.autofit[3]['Body 2']).toEqual({ fontScale: 94000, lnSpcReduction: 10000 })
   })
   it('はみ出し: x=-30 は 0 に寄せて w を縮め、W-OFFSLIDE（5 px 以上）', () => {
@@ -273,9 +286,10 @@ describe('convert: PatchContext と Report（§4.5、§3.3、§8）', () => {
     expect(ctx.report.warnings.some((w) => w.code === 'W-OFFSLIDE' && w.slide === 3)).toBe(true)
   })
   it('Report: 件数と、Capture の警告にスライド番号と名前が付く', () => {
+    const all = (captureJson as unknown as Capture).slides.flatMap((s) => s.elements)
     expect(ctx.report.slides).toBe(5)
     expect(ctx.report.replaced).toBe(1)
-    expect(ctx.report.native).toBe(11)
+    expect(ctx.report.native).toBe(all.length - 1)
     expect(ctx.report.replacements[0]).toMatchObject({ slide: 2, elementId: 's2-e9', name: 'Replaced 9', reason: 'math' })
     const w = ctx.report.warnings.find((x) => x.code === 'W-MATH-INLINE')!
     expect(w).toMatchObject({ slide: 2, name: 'Body' })

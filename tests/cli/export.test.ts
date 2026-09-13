@@ -3,7 +3,10 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
 import { PATCHES, postProcess } from '../../packages/slidev-addon-pptx/src/patch/index'
 import { readFixturePptx } from '../helpers/pptx'
 import { contextFor } from '../patch/helpers'

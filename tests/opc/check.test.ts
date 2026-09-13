@@ -96,7 +96,7 @@ describe('opc/check: 整合の取れた最小 PPTX', () => {
 })
 
 describe('opc/check: 規則ごと', () => {
-  it('C1: parse できない XML', async () => {
+  it('C1: parse できない XML（@xmldom/xmldom は既定では例外を投げず document を返すので、errorHandler / onError で拾う前提）', async () => {
     const r = await check(await minimalPptx({ slideXml: '<p:sld><p:cSld>' }))
     expect(errorsOf(r)).toContain('C1')
   })
@@ -163,6 +163,12 @@ describe('opc/check: 規則ごと', () => {
     const x = sp(2, 'z').replace('cx="914400" cy="914400"', 'cx="0" cy="0"')
     const r = await check(await minimalPptx({ slideXml: slideXml(x) }))
     expect(r.find((v) => v.rule === 'C9')?.level).toBe('warn')
+  })
+
+  it('C9: spTree 自身の <p:grpSpPr><a:xfrm> の cx=0 cy=0 は対象外（PptxGenJS は常に 0 で出す）', async () => {
+    const withGrp = slideXml(sp(2, 'a')).replace('<p:grpSpPr/>', '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>')
+    const r = await check(await minimalPptx({ slideXml: withGrp }))
+    expect(rulesOf(r)).not.toContain('C9')
   })
 
   it('C10: r: 名前空間の属性値がそのパートの rels に無い（r:id / r:embed / r:link）', async () => {

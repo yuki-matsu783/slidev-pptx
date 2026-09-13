@@ -93,12 +93,27 @@ describe('build/masters: defineMasters の出力', () => {
     }
   })
 
-  it('キャンバス幅が変わっても比例で同じインチになる（px 基準で定義している）', async () => {
+  it('対応表は Slidev の px（56 px の padding など）で定義し、canvasWidth で換算する: 1960 px なら座標は半分', async () => {
     const a = new PptxGenJS(); a.layout = 'LAYOUT_WIDE'; defineMasters(a, 980); a.addSlide({ masterName: 'default' })
-    const b = new PptxGenJS(); b.layout = 'LAYOUT_WIDE'; defineMasters(b, 1920); b.addSlide({ masterName: 'default' })
+    const b = new PptxGenJS(); b.layout = 'LAYOUT_WIDE'; defineMasters(b, 1960); b.addSlide({ masterName: 'default' })
     const pa = await openPptx(await a.write({ outputType: 'nodebuffer' }) as Buffer)
     const pb = await openPptx(await b.write({ outputType: 'nodebuffer' }) as Buffer)
-    expect(await pa.text('ppt/slideLayouts/slideLayout4.xml')).toBe(await pb.text('ppt/slideLayouts/slideLayout4.xml'))
+    const xa = Number(els(await pa.xml('ppt/slideLayouts/slideLayout4.xml'), 'a', 'off')[0].getAttribute('x'))
+    const xb = Number(els(await pb.xml('ppt/slideLayouts/slideLayout4.xml'), 'a', 'off')[0].getAttribute('x'))
+    expect(Math.abs(xb * 2 - xa)).toBeLessThanOrEqual(2)
+  })
+
+  it('defineMasters は LAYOUTS を書き換えない（PptxGenJS の createSlideMaster は渡した options を破壊するので、写しを渡す）', async () => {
+    const before = JSON.stringify(LAYOUTS)
+    const pptx = new PptxGenJS(); pptx.layout = 'LAYOUT_WIDE'
+    defineMasters(pptx, 980)
+    defineMasters(new PptxGenJS(), 980)
+    expect(JSON.stringify(LAYOUTS)).toBe(before)
+    for (const v of Object.values(LAYOUTS)) {
+      for (const o of v.objects ?? []) {
+        if ('placeholder' in o) expect(Object.keys(o.placeholder.options).sort()).toEqual(['h', 'name', 'type', 'w', 'x', 'y'])
+      }
+    }
   })
 })
 

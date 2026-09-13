@@ -29,11 +29,20 @@ Markdown で書くスライド
 - [外部リンク](https://sli.dev) と [3 枚目](#3)
   - 入れ子 ~~取り消し~~ <u>下線</u> H<sub>2</sub>O x<sup>2</sup>
 - <mark>マーク</mark>
+- 箇条書きの中の表（W-LI-BLOCK）
+
+  | a | b |
+  |---|---|
+  | 1 | 2 |
 
 1. 番号 1
 2. 番号 2
 
 <div v-click class="mt-4">クリックの文（v-click は装飾を持たない div）</div>
+
+![代替文字](/bg.png)
+
+[![リンクつき画像](/bg.png)](https://sli.dev)
 
 ---
 layout: two-cols
@@ -64,7 +73,7 @@ const a = 1
 | `default` | 通常 |
 | cover | 表紙 |
 
----
+***
 
 段落のあとの表（区切りブロックで枠が割れる）
 
@@ -103,6 +112,10 @@ const inside = 'box'
 </div>
 
 <div class="mt-4"><button class="px-3 py-1 border">未知の要素（規則 15）</button></div>
+
+<div style="background-image: linear-gradient(90deg, #f00, #00f); width: 200px; height: 20px"></div>
+
+<img src="/missing.png" alt="取得できない画像（W-IMAGE）" width="80" height="20">
 
 <div data-ppt-export="image">
 
@@ -167,3 +180,6 @@ zoom: 0.8
 <div style="position:absolute; left:900px; top:300px; width:200px">右にはみ出した箱</div>
 <div style="position:absolute; left:-300px; top:400px; width:100px">完全に外（W-HIDDEN）</div>
 <div style="opacity:0">見えない</div>
+<div style="position:absolute; left:300px; top:380px; width:300px; height:40px; overflow:hidden">
+  溢れる本文 1 行目<br>2 行目<br>3 行目<br>4 行目<br>5 行目<br>6 行目（W-OVERFLOW）
+</div>
