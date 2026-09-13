@@ -232,6 +232,52 @@ describe('convert: 画像・図形・線（§4.3）', () => {
   })
 })
 
+describe('convert: 図形の種類・調整値・反転・矢じり（slide 4）', () => {
+  const sp = (name: string) => shapesOf(slide[4]).find((s) => cNvPrOf(s).getAttribute('name') === name)!
+  const xfrm = (name: string) => els(sp(name), 'a', 'xfrm')[0]
+  const shapeWarnings = () => ctx.report.warnings.filter((w) => w.code === 'W-SHAPE' && w.slide === 4)
+
+  it('shapeNames: 自由配置の見出しのあとに図形 4 つ', () => {
+    expect(ctx.shapeNames[4]).toEqual(['Text 1', 'Shape 2', 'Shape 3', 'Shape 4', 'Shape 5'])
+  })
+  it('PptxGenJS の ShapeType に無いコネクタ（bentConnector3）と foldedCorner も prst 名のまま出る', () => {
+    expect(els(sp('Shape 2'), 'a', 'prstGeom')[0].getAttribute('prst')).toBe('bentConnector3')
+    expect(els(sp('Shape 3'), 'a', 'prstGeom')[0].getAttribute('prst')).toBe('foldedCorner')
+    expect(textOf(sp('Shape 3'))).toBe('メモ')
+  })
+  it('未知の名前は rect + W-SHAPE（調整値も捨てる）', () => {
+    expect(els(sp('Shape 4'), 'a', 'prstGeom')[0].getAttribute('prst')).toBe('rect')
+    expect(shapeWarnings().filter((w) => w.elementId === 's4-e4').length).toBeGreaterThanOrEqual(1)
+    expect(ctx.adjust[4]['Shape 4']).toBeUndefined()
+  })
+  it('flipH / flipV は xfrm に（文字あり = addText、文字なし = addShape の両方）', () => {
+    expect(xfrm('Shape 3').getAttribute('flipH')).toBe('1')
+    expect(xfrm('Shape 3').getAttribute('flipV')).toBe('1')
+    expect(xfrm('Shape 5').hasAttribute('flipH')).toBe(false)
+    expect(xfrm('Shape 5').getAttribute('flipV')).toBe('1')
+    expect(xfrm('Shape 2').hasAttribute('flipH')).toBe(false)
+  })
+  it('arrow の head / tail は headEnd / tailEnd に（知らない値は arrow）', () => {
+    const ln = els(sp('Shape 2'), 'a', 'ln')[0]
+    expect(els(ln, 'a', 'headEnd')[0].getAttribute('type')).toBe('triangle')
+    expect(els(ln, 'a', 'tailEnd')[0].getAttribute('type')).toBe('arrow')
+  })
+  it('adj は整数に丸めて ctx.adjust に入り、定義の avLst に無いキーは捨てて W-SHAPE', () => {
+    expect(ctx.adjust[4]['Shape 2']).toEqual({ adj1: 25000 })
+    const w = shapeWarnings().find((x) => x.elementId === 's4-e2')!
+    expect(w).toMatchObject({ name: 'Shape 2' })
+    expect(w.message).toContain('foo')
+  })
+  it('roundRect で adj.adj があるとき rectRadius の gd は出ない（後処理が書く）', () => {
+    expect(els(sp('Shape 5'), 'a', 'prstGeom')[0].getAttribute('prst')).toBe('roundRect')
+    expect(els(sp('Shape 5'), 'a', 'gd')).toHaveLength(0)
+    expect(ctx.adjust[4]['Shape 5']).toEqual({ adj: 30000 })
+  })
+  it('調整値の無い図形は ctx.adjust に入らない（slide 2 の roundRect は rectRadius のまま）', () => {
+    expect(ctx.adjust[2]).toBeUndefined()
+  })
+})
+
 describe('convert: 背景（§5.5）', () => {
   it('背景色は bg の srgbClr', () => {
     expect(els(els(slide[4], 'p', 'bg')[0], 'a', 'srgbClr')[0].getAttribute('val')).toBe('1E293B')
