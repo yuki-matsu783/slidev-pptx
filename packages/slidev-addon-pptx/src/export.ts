@@ -77,7 +77,7 @@ export async function exportPptx(o: ExportOptions): Promise<Report> {
     let ready = await openPrint(page, base, o.range, timeout, o.wait ?? 0, slideCount)
 
     // Vite の依存最適化（"optimized dependencies changed. reloading"）が収集の最中に来ると実行文脈が壊れる。
-    // その場合は読み込み直しを待って 1 回だけやり直す（番人の結果もやり直した側を採る）
+    // その場合は読み込み直しを待って 1 回だけやり直す（生成の確認の結果もやり直した側を採る）
     let capture: Capture
     try {
       capture = await page.evaluate(collect)
@@ -131,7 +131,7 @@ export function isValidRange(range: string): boolean {
 // ---------------------------------------------------------------- ブラウザ
 
 /**
- * 設計 §1.2 の待機列 + UnoCSS の番人。
+ * 設計 §1.2 の待機列 + UnoCSS の生成の確認。
  * Vite の開発サーバでは、最初の読み込みで UnoCSS がデッキ由来のユーティリティを生成しないことがある（実測。再読み込みすると効く）。
  * DOM にあるクラスのうち Slidev 自身のものでないクラスに CSS 規則が 1 つも無ければ、再読み込みして待ち直す。
  * それでも来なければ unoReady: false を返す（黙って誤った値を測らない）
