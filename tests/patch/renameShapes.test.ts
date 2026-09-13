@@ -1,7 +1,7 @@
 // 後処理 1: renameShapes（native-export.md §3.2、§4.5）
 import { describe, expect, it } from 'vitest'
 import { renameShapes } from '../../packages/slidev-addon-pptx/src/patch/patches/renameShapes'
-import { openPptx, shapesOf, cNvPrOf, els } from '../helpers/pptx'
+import { openPptx, shapesOf, cNvPrOf, els, readFixturePptx } from '../helpers/pptx'
 import { contextFor, runPatches } from './helpers'
 
 describe('patch/renameShapes', () => {
@@ -32,18 +32,25 @@ describe('patch/renameShapes', () => {
     expect(new Set(names).size).toBe(names.length)
   })
 
-  it('レイアウトとマスターの id も一意にする（name は触らない）', async () => {
-    const p = await openPptx(await runPatches([renameShapes]))
-    for (const path of ['ppt/slideLayouts/slideLayout2.xml', 'ppt/slideMasters/slideMaster1.xml']) {
-      const ids = shapesOf(await p.xml(path)).map((s) => cNvPrOf(s).getAttribute('id'))
-      expect(new Set(ids).size).toBe(ids.length)
-      expect(ids).not.toContain('0')
-      expect(ids).not.toContain('1')
-    }
+  it('レイアウトの id も一意にする（fixture は元から一意なので、重複させた入力を作って通す）。name は触らない', async () => {
+    const { default: JSZip } = await import('jszip')
+    const zip = await JSZip.loadAsync(readFixturePptx())
+    const path = 'ppt/slideLayouts/slideLayout2.xml'
+    const xml = await zip.file(path)!.async('string')
+    expect(xml).toMatch(/<p:cNvPr id="3"/)
+    zip.file(path, xml.replace('<p:cNvPr id="3"', '<p:cNvPr id="2"')) // title と body を同じ id に
+    const input = await zip.generateAsync({ type: 'nodebuffer' })
+    const beforeNames = shapesOf(await (await openPptx(input)).xml(path)).map((s) => cNvPrOf(s).getAttribute('name'))
+
+    const p = await openPptx(await runPatches([renameShapes], contextFor(), input))
+    const shapes = shapesOf(await p.xml(path))
+    const ids = shapes.map((s) => Number(cNvPrOf(s).getAttribute('id')))
+    expect(ids).toEqual(ids.map((_, i) => i + 2))
+    expect(shapes.map((s) => cNvPrOf(s).getAttribute('name'))).toEqual(beforeNames)
   })
 
   it('ノート（notesSlides）は対象外で、元の id のまま', async () => {
-    const before = await openPptx((await import('../helpers/pptx')).readFixturePptx())
+    const before = await openPptx(readFixturePptx())
     const after = await openPptx(await runPatches([renameShapes]))
     expect(await after.text('ppt/notesSlides/notesSlide1.xml')).toBe(await before.text('ppt/notesSlides/notesSlide1.xml'))
   })

@@ -44,6 +44,19 @@ export async function openPrint(browser: Browser, base: string, opts: { range?: 
   await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-waitfor]')).every((el) => el.querySelector(el.getAttribute('data-waitfor')!)), null, { timeout: 30_000 }).catch(() => {})
   await page.waitForFunction(() => Array.from(document.querySelectorAll('.mermaid')).every((el) => (el.shadowRoot ?? el).querySelector('svg')), null, { timeout: 30_000 }).catch(() => {})
   await page.waitForLoadState('networkidle')
+  // UnoCSS は dev では後から HMR で CSS を注入する。Slidev 自身の規則（.slidev-layout の px-14 = 56px）が効くまで待ち、
+  // さらに <style> の合計長が 500 ms 動かないことを確かめる（設計 §1.2 の待機列には無い。README に記載）
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[data-slidev-no] .slidev-layout')
+    return el && getComputedStyle(el).paddingLeft === '56px'
+  }, null, { timeout: 30_000 }).catch(() => {})
+  let last = -1
+  for (let i = 0; i < 20; i++) {
+    const len = await page.evaluate(() => Array.from(document.querySelectorAll('style')).reduce((n, s) => n + (s.textContent?.length ?? 0), 0))
+    if (len === last) break
+    last = len
+    await page.waitForTimeout(500)
+  }
   return page
 }
 

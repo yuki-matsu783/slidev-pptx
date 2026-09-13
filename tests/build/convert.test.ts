@@ -19,7 +19,8 @@ let slide: Record<number, Document> = {}
 let rels: Record<number, Document> = {}
 
 beforeAll(async () => {
-  const capture = captureJson as unknown as Capture
+  // build が Capture を破壊的に触っても他の it に波及しないよう、毎回 clone を渡す
+  const capture = structuredClone(captureJson) as unknown as Capture
   const r = await build(capture, dataJson, { assets: { 's2-e9': PNG_1x1 }, lang: 'ja-JP', layouts: dataJson.layouts })
   ctx = r.ctx
   p = await openPptx(await r.pptx.write({ outputType: 'nodebuffer' }) as Buffer)
@@ -221,7 +222,7 @@ describe('convert: 画像・図形・線（§4.3）', () => {
     expect(pics).toHaveLength(3)
   })
   it('assets に無い置き換えは灰色の矩形 + W-IMAGE', async () => {
-    const capture = captureJson as unknown as Capture
+    const capture = structuredClone(captureJson) as unknown as Capture
     const r = await build(capture, dataJson, { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
     expect(r.ctx.report.warnings.some((w) => w.code === 'W-IMAGE' && w.slide === 2)).toBe(true)
     const q = await openPptx(await r.pptx.write({ outputType: 'nodebuffer' }) as Buffer)

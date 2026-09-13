@@ -194,9 +194,10 @@ describe('opc/check: 規則ごと', () => {
   })
 
   it('C13: テキストノードと属性値の制御文字', async () => {
-    const inText = sp(2, 'a', `<a:p><a:r><a:rPr lang="ja-JP"/><a:t>badchar</a:t></a:r></a:p>`)
+    // 制御文字はエスケープ表記で書く（直書きすると整形ツールや再コピーで黙って消える）
+    const inText = sp(2, 'a', `<a:p><a:r><a:rPr lang="ja-JP"/><a:t>bad${String.fromCharCode(7)}char</a:t></a:r></a:p>`)
     expect(errorsOf(await check(await minimalPptx({ slideXml: slideXml(inText) })))).toContain('C13')
-    const inAttr = sp(2, 'name')
+    const inAttr = sp(2, `na${String.fromCharCode(1)}me`)
     expect(errorsOf(await check(await minimalPptx({ slideXml: slideXml(inAttr) })))).toContain('C13')
   })
 

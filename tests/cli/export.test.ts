@@ -13,7 +13,8 @@ import { contextFor } from '../patch/helpers'
 import { PLAIN } from '../e2e/helpers'
 
 const ROOT = resolve(here, '../..')
-const BIN = resolve(ROOT, 'node_modules/.bin/slidev-pptx')
+// Windows では .bin の実体は sh スクリプトで、直に起動するには .CMD が要る（CLAUDE.md: Git Bash / WSL / Linux で動くこと）
+const BIN = resolve(ROOT, 'node_modules/.bin', process.platform === 'win32' ? 'slidev-pptx.CMD' : 'slidev-pptx')
 const tmp = () => mkdtempSync(join(tmpdir(), 'slidev-pptx-cli-'))
 
 function run(args: string[], timeout = 180_000) {

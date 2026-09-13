@@ -9,11 +9,11 @@
 入ったあと:
 
 ```sh
-pnpm vitest run -c tests/vitest.config.ts        # 単体（ブラウザ無し）
-pnpm vitest run -c tests/vitest.e2e.config.ts    # e2e と CLI（playwright-chromium と Slidev サーバを使う）
+pnpm test        # = vitest run -c tests/vitest.config.ts      単体（ブラウザ無し）
+pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（playwright-chromium と Slidev サーバを使う）
 ```
 
-`package.json` の `test` / `test:e2e` scripts も同じ 2 行にする（フェーズ 4）。
+`package.json` の scripts には `vitest run -c …` の形で書く（フェーズ 4）。`node` が PATH に無い環境があるので、呼ぶ側は常に `pnpm` 経由。
 
 ## 置き場
 
@@ -29,6 +29,8 @@ pnpm vitest run -c tests/vitest.e2e.config.ts    # e2e と CLI（playwright-chro
 | `patch/*.test.ts` | 後処理 1〜7 を 1 変換 1 ファイル。`pipeline.test.ts` は列の順、往復の同値、DEFLATE | §3.1、§3.2 |
 | `build/*.test.ts` | 単位、名前、sanitize、マスター、フォント、ノート、レイアウト解決、Capture → XML | §4、§5、§6 |
 | `e2e/collect.test.ts` | 収集器を `page.evaluate(collect)` で走らせる | ppt-components §2、§3 |
+| `e2e/components.test.ts` | PPT 部品のデッキ。アドオンの実装が入るまで `describe.skip` | ppt-components §1 |
+| `patch/replaceMaster.test-d.ts` | `MasterSwap` の型（`typecheck` で検査。実行時の `expectTypeOf` は no-op） | §5.4 |
 | `e2e/export.test.ts` | 全経路。OPC 検査、Report、警告コード、dropped | §1、§8 |
 | `cli/export.test.ts` | exit code、フラグ、scripts の綴り | §7 |
 
@@ -60,17 +62,35 @@ pnpm vitest run -c tests/vitest.e2e.config.ts    # e2e と CLI（playwright-chro
 - `collect` は 1 関数の中に閉じる（Playwright は関数を文字列化して渡すので、モジュール先頭の定数やヘルパを参照できない）
 - `Capture.canvas.height` は `.print-slide-container` の rect のまま（551〜552。丸め規則は設計に無い）
 - `dropped['code-highlight']` の単位（ブロックか行か）は設計に無いので、検査は下限だけ見る
-- e2e の viewport は Slidev と同じ「980 × 552 × 枚数」。待機列は `native-export.md` §1.2 を写した（`tests/e2e/helpers.ts`）
+- e2e の viewport は Slidev と同じ「980 × 552 × 枚数」。待機列は `native-export.md` §1.2 を写し、UnoCSS の遅延注入を待つ段（`.slidev-layout` の padding が効く + `<style>` の長さが 500 ms 動かない）を足した（`tests/e2e/helpers.ts`）
+- xmldom は XML の行末正規化で `<a:t>` の CRLF を LF にする。後処理 5 の区切りは `\r\n | \r | \n` のどれでも
+- 往復の「等価」= 要素名・属性の集合・テキスト（行末を LF に揃え、空白だけのノードは無視）が再帰的に同じ（`tests/patch/pipeline.test.ts` の `firstDifference`）
+- `rebuildContentTypes` の拡張子 → ContentType は `jpg`/`jpeg` → `image/jpeg`、`webp` → `image/webp`（PptxGenJS 自身は `jpg` → `image/jpg` を出すが、IANA の型に揃える）
+- `LAYOUTS` は Slidev の px を保持し、`defineMasters` が `canvasWidth` で換算する。placeholder の `idx` は PptxGenJS の採番で 100 始まり
+- `notesText` は `[click]` の後ろの空白も詰める
+- `data-ppt-box` で一部の辺だけ指定した部品も `boxSource: 'prop'`
+- `transition` は `W-TRANSITION`（デッキで 1 回）と `dropped['transition']` の両方に出る（設計 §8.2 は表で警告に挙げつつ本文で「警告にしない」と書いていて矛盾している。design-feedback の候補）
+- CLI の検査は Windows では `node_modules/.bin/slidev-pptx.CMD` を起動する
 
 ## 設計へ書き戻す候補（design-feedback の子で出す）
 
 - ppt-components.md §2.2: 「`p` の中身が `img`（と空白）だけなら、その `p` ごと画像要素（区切りブロック）」の特例。
   Markdown の `![]()` は `<p><img></p>` になり、今の規則では 11（`p`）が先に当たって 6（`img`）に届かない。
-  このデッキは裸の `<img>` で回避している
+  このデッキは裸の `<img>` で回避している。`<a><img></a>` も 1 行に書くと段落に落ちるので 3 行に割ってある
+- ppt-components.md §2.2 の 12: タグ一覧に `a` を足す。§3.3 の「`a > img` なら `link` を要素に」へ到達する行が無い
 - ppt-components.md §2.2 の 1: `hr` は高さ 0〜1 px なので、「rect が空」を `w === 0 || h === 0` で判定すると規則 10 に届かない
+- ppt-components.md §3.4: Slidev は `[x](#3)` を `href="##3"` にする。「`#N` か `/N`」に `##N` を足す。このデッキは `<a href="/3">` で回避している
+- ppt-components.md §3.5: 罫線は `td`/`th` の computed では 4 辺とも 0（Slidev は `tr { border-b }`）。セルが 0 なら `tr` → `table` へ遡る。`tr` の色は `rgba(…, 0.2)` なので不透明度の扱いも決める
+- ppt-components.md §3.6: 行強調 `{2}` で強調されない行は `.slidev-code-dishonored`（opacity 0.3）。§3.4 の「祖先の opacity の積 → transparency」を当てないよう、コード枠では opacity を無視する
+- ppt-components.md §3.4: `transparency = 100 − opacity × 100` の丸め（整数に）
+- native-export.md §3.2 の 5: 「`<a:t>` の CRLF」は DOM では LF。区切りの定義を `\r\n | \r | \n` に
+- native-export.md §1.2: 待機列に UnoCSS の遅延注入を待つ段を足す
+- native-export.md §8.2: `W-TRANSITION` を警告に出すか `dropped` だけにするかを 1 つに
 
 ## フェーズ 4 で最初に確かめること
 
-- vitest が `tests/**` を ESM として動かすとき `import.meta.url` が取れること（`__dirname` は使わず `here` に統一）
+- vitest が `tests/**` を ESM として動かすとき `import.meta.url` が取れること（`__dirname` は使わず `here` に統一。vitest の config も同じ）
+- `zoom` は CSS の `scale` プロパティ（`getComputedStyle(el).scale === "0.8"`、`transform` は `none`）。`transform` を読む実装では取れない
+- スライド 12 のような `<!-- -->` は Slidev がノートとして拾う。ノートの検査を足すときはデッキ側のコメントに注意
 - `page.evaluate(collect)` の直列化（上の「1 関数の中に閉じる」）
 - `plain.md` の枚数は `tests/e2e/slides.ts` の `SLIDE_COUNT`（12）。`@slidev/parser` は `---` で始まる行を無条件に区切りにするので、水平線は `***` で書いてある

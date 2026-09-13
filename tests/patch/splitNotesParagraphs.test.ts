@@ -10,14 +10,17 @@ function bodyParagraphs(doc: Document): Element[] {
 }
 
 describe('patch/splitNotesParagraphs', () => {
-  it('fixture のノートは 1 つの <a:t> に CRLF で詰まっている（前提）', async () => {
+  it('fixture のノートは 1 つの <a:t> に CRLF で詰まっている（前提。生の XML で見る。DOM を通すと XML の行末正規化で LF になる）', async () => {
     const p = await openPptx(readFixturePptx())
+    const raw = await p.text('ppt/notesSlides/notesSlide1.xml')
+    expect(raw).toMatch(/<a:t>1 行目\r\n2 行目\r\n3 行目<\/a:t>/)
     const doc = await p.xml('ppt/notesSlides/notesSlide1.xml')
     const ts = els(doc, 'a', 't').map((t) => t.textContent)
-    expect(ts.some((t) => /\r\n/.test(t ?? ''))).toBe(true)
+    expect(ts.some((t) => /\n/.test(t ?? ''))).toBe(true)
+    expect(ts.some((t) => /\r/.test(t ?? ''))).toBe(false)
   })
 
-  it('行ごとに <a:p> に割れる', async () => {
+  it('行ごとに <a:p> に割れる（DOM では LF なので、区切りは \\r\\n | \\r | \\n のどれでも）', async () => {
     const p = await openPptx(await runPatches([splitNotesParagraphs]))
     const paras = bodyParagraphs(await p.xml('ppt/notesSlides/notesSlide1.xml'))
     const texts = paras.map((para) => els(para, 'a', 't').map((t) => t.textContent).join(''))

@@ -26,7 +26,7 @@ Markdown で書くスライド
 ## 箇条書きと書式
 
 - **太字** と *斜体* と `コード`
-- [外部リンク](https://sli.dev) と [3 枚目](#3)
+- [外部リンク](https://sli.dev) と <a href="/3">3 枚目</a>
   - 入れ子 ~~取り消し~~ <u>下線</u> H<sub>2</sub>O x<sup>2</sup>
 - <mark>マーク</mark>
 - 箇条書きの中の表（W-LI-BLOCK）
@@ -42,7 +42,9 @@ Markdown で書くスライド
 
 <img src="/bg.png" alt="代替文字" width="120" height="30">
 
-<a href="https://sli.dev"><img src="/bg.png" alt="リンクつき画像" width="120" height="30"></a>
+<a href="https://sli.dev">
+<img src="/bg.png" alt="リンクつき画像" width="120" height="30">
+</a>
 
 ---
 layout: two-cols
@@ -115,7 +117,8 @@ const inside = 'box'
 
 <div style="background-image: linear-gradient(90deg, #f00, #00f); width: 200px; height: 20px"></div>
 
-<img src="/missing.png" alt="取得できない画像（W-IMAGE）" width="80" height="20">
+<!-- 静的な src="/missing.png" は Vite が import に変換して解決に失敗し、スライドごと 500 になる。動的束縛なら変換されない -->
+<img :src="'/missing.png'" alt="取得できない画像（W-IMAGE）" width="80" height="20">
 
 <div data-ppt-export="image">
 
@@ -176,7 +179,6 @@ zoom: 0.8
 
 ## はみ出し
 
-<!-- 装飾（背景色）を付けて規則 13 の独立した枠にする。付けないと規則 12 で 1 枠に合併し、title の直後の body 候補になって placeholder に入る -->
 <div style="position:absolute; left:-40px; top:200px; width:200px; background:#eeeeee">左にはみ出した箱</div>
 <div style="position:absolute; left:900px; top:300px; width:200px; background:#eeeeee">右にはみ出した箱</div>
 <div style="position:absolute; left:-300px; top:400px; width:100px; background:#eeeeee">完全に外（W-HIDDEN）</div>

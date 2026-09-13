@@ -24,15 +24,24 @@ describe('patch/index: 列の定義', () => {
 
 describe('patch/index: postProcess', () => {
   it('何もしない Patch を通した結果は、全 XML が元と等価（§11 の 1: xmldom の往復）', async () => {
-    // @xmldom/xmldom は空要素を <x/> に畳み、属性の改行を詰めるので、文字列一致ではなく
-    // 「両方を parse → serialize した結果」（往復の冪等性）で比べる
+    // @xmldom/xmldom は空要素を <x/> に畳み、属性の改行を詰め、テキストの CRLF を LF に正規化する。
+    // 「等価」= 要素名・属性の集合・テキスト（行末を LF に揃え、空白だけのノードは無視）が再帰的に同じ。
+    // 元の文字列を DOM にしたものと、往復後の文字列を DOM にしたものを比べる（往復後同士を比べると冪等性しか見えない）
     const noop: Patch = xmlPatch('noop', /\.(xml|rels)$/, () => {})
     const before = await openPptx(readFixturePptx())
     const after = await openPptx(await postProcess(readFixturePptx(), [noop], contextFor()))
     expect(after.list().sort()).toEqual(before.list().sort())
     for (const path of before.list().filter((p) => /\.(xml|rels)$/.test(p))) {
-      expect(canonical(await after.text(path)), path).toBe(canonical(await before.text(path)))
+      const diff = firstDifference(parse(await before.text(path)).documentElement!, parse(await after.text(path)).documentElement!)
+      expect(diff, path).toBeUndefined()
     }
+  })
+
+  it('等価判定そのものの検査: 空要素の書き方と CRLF の違いは等価、属性やテキストの違いは非等価', () => {
+    expect(firstDifference(parse('<a x="1"><b></b>t\r\n</a>').documentElement!, parse('<a x="1"><b/>t\n</a>').documentElement!)).toBeUndefined()
+    expect(firstDifference(parse('<a x="1"/>').documentElement!, parse('<a x="2"/>').documentElement!)).toBeDefined()
+    expect(firstDifference(parse('<a>t</a>').documentElement!, parse('<a>u</a>').documentElement!)).toBeDefined()
+    expect(firstDifference(parse('<a><b/></a>').documentElement!, parse('<a/>').documentElement!)).toBeDefined()
   })
 
   it('往復は冪等（2 回通しても 1 回と同じバイト列）', async () => {
@@ -78,11 +87,38 @@ describe('patch/index: postProcess', () => {
   })
 })
 
-/** parse → serialize で書き方の揺れ（空要素、属性の改行）を揃える。属性の順は変えない */
-function canonical(xml: string): string {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml')
-  return new XMLSerializer().serializeToString(doc).replace(/\r\n/g, '\n').trim()
+function parse(xml: string): Document {
+  return new DOMParser().parseFromString(xml, 'application/xml') as unknown as Document
 }
+
+/** 2 つの要素を再帰的に比べ、最初の違いを文字列で返す。同じなら undefined */
+function firstDifference(a: Element, b: Element, path = a.nodeName): string | undefined {
+  if (a.nodeName !== b.nodeName) return `${path}: name ${a.nodeName} != ${b.nodeName}`
+  const attrs = (e: Element) => Object.fromEntries(Array.from(e.attributes).map((x) => [x.name, x.value]).sort())
+  const aa = JSON.stringify(attrs(a))
+  const ba = JSON.stringify(attrs(b))
+  if (aa !== ba) return `${path}: attrs ${aa} != ${ba}`
+  const kids = (e: Element) => Array.from(e.childNodes).filter((n) => n.nodeType === 1 || (n.nodeType === 3 && (n.nodeValue ?? '').trim() !== ''))
+  const ak = kids(a)
+  const bk = kids(b)
+  if (ak.length !== bk.length) return `${path}: ${ak.length} children != ${bk.length}`
+  for (let i = 0; i < ak.length; i++) {
+    const x = ak[i]
+    const y = bk[i]
+    if (x.nodeType !== y.nodeType) return `${path}[${i}]: node type`
+    if (x.nodeType === 3) {
+      const norm = (s: string | null) => (s ?? '').replace(/\r\n?/g, '\n')
+      if (norm(x.nodeValue) !== norm(y.nodeValue)) return `${path}[${i}]: text ${JSON.stringify(x.nodeValue)} != ${JSON.stringify(y.nodeValue)}`
+    } else {
+      const d = firstDifference(x as Element, y as Element, `${path}/${(x as Element).nodeName}[${i}]`)
+      if (d) return d
+    }
+  }
+  return undefined
+}
+
+// XMLSerializer は冪等性の it で使う（往復後のバイト列の比較は postProcess の中で行われる）
+void XMLSerializer
 
 /** ZIP のローカルヘッダを先頭から歩き、名前が / で終わらない最初の項目の圧縮方式（0 = STORE, 8 = DEFLATE）を返す */
 function firstFileMethod(buf: Buffer): number {

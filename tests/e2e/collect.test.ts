@@ -55,9 +55,9 @@ describe('collect: 表紙（cover。見出しは div.my-auto 越し）', () => {
     expect(body.paragraphs).toHaveLength(2)
     expect(body.paragraphs[1].runs.map((r) => r.text).join('')).toContain('裸のテキスト')
   })
-  it('opacity-70 の span の run は transparency 30', () => {
+  it('opacity-70 の span の run は transparency 30（computed は "0.7" なので浮動小数の誤差を許す）', () => {
     const body = texts(slide(S.cover))[1]
-    expect(body.paragraphs[1].runs[0].transparency).toBe(30)
+    expect(body.paragraphs[1].runs[0].transparency).toBeCloseTo(30, 5)
   })
   it('box は キャンバス px で、title は左 56 px の少し左（h1 の -ml-[0.05em] で 3 px はみ出す）', () => {
     const x = texts(slide(S.cover))[0].box.x
@@ -86,6 +86,8 @@ describe('collect: 箇条書きと run（§3.2、§3.4）', () => {
     expect(code.code).toBe(true)
     expect(code.highlight).toMatch(/^#/)
     expect(runs.find((r) => r.text === '外部リンク')?.link).toEqual({ url: 'https://sli.dev' })
+    // デッキは <a href="/3"> で書いてある。Markdown の [x](#3) は Slidev が href="##3" にするので、設計 §3.4 の
+    // 「#N か /N」に当たらない（README の design-feedback 候補）
     expect(runs.find((r) => r.text === '3 枚目')?.link).toEqual({ slide: 3 })
     expect(runs.find((r) => r.text === '取り消し')?.strike).toBe(true)
     expect(runs.find((r) => r.text === '下線')?.underline).toBe(true)
@@ -110,7 +112,8 @@ describe('collect: 箇条書きと run（§3.2、§3.4）', () => {
   })
   it('img（規則 6）: src は絶対 URL、alt。a > img は要素の link', () => {
     // デッキは裸の <img> で書いてある。Markdown の ![]() は <p><img></p> になり、規則 11 が先に当たって
-    // 規則 6 に届かない（設計 §2.2 に「p の中身が img だけなら p ごと」の特例は無い。README の design-feedback 候補）
+    // 規則 6 に届かない（設計 §2.2 に「p の中身が img だけなら p ごと」の特例は無い。README の design-feedback 候補）。
+    // <a> は 3 行に割って HTML ブロックにしてある（1 行に 2 タグ以上だと段落に落ちる）。規則 12 のタグ一覧に a が無い点も候補
     const imgs = images(slide(S.bullets))
     expect(imgs).toHaveLength(2)
     expect(imgs[0].src).toMatch(/^http.*\/bg\.png$/)
@@ -144,6 +147,11 @@ describe('collect: two-cols（§2.1、§3.1、§3.8）', () => {
     expect(code.frame.fill?.color).toMatch(/^#/)
     expect(code.frame.inset.some((v) => v > 0)).toBe(true)
   })
+  it('行強調 {2} で強調されない行は .slidev-code-dishonored（opacity 0.3）だが、run に transparency を付けない', () => {
+    // 設計 §3.4 の「祖先の opacity の積 → transparency」をそのまま当てると、強調していない行が薄くなる。§3.6 の例外（README の候補）
+    const code = texts(slide(S.twoCols)).find((t) => t.paragraphs[0].kind === 'code')!
+    for (const p of code.paragraphs) for (const r of p.runs) expect(r.transparency ?? 0).toBe(0)
+  })
 })
 
 describe('collect: 表と線（§3.5、§2.2 の 10）', () => {
@@ -154,6 +162,7 @@ describe('collect: 表と線（§3.5、§2.2 の 10）', () => {
     expect(tbl.headerRows).toBe(1)
     expect(tbl.colW).toHaveLength(2)
     expect(tbl.rowH).toHaveLength(3)
+    // Slidev の罫線は tr の border-b で、td/th の computed は 4 辺とも 0。セルが 0 なら tr → table へ遡る（README の候補）
     const c = tbl.rows[0][0]
     expect(c.border[2].width).toBeGreaterThan(0)
     expect(c.border[0].width).toBe(0)

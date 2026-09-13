@@ -1,6 +1,6 @@
 // 後処理 6: replaceMaster は今回 no-op（native-export.md §5.4）。
 // no-op でも MasterSwap の型と、rels を Type で引く補助関数は動くことを固定する。
-import { describe, expect, expectTypeOf, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { DOMParser } from '@xmldom/xmldom'
 import { replaceMaster } from '../../packages/slidev-addon-pptx/src/patch/patches/replaceMaster'
 import type { MasterSwap } from '../../packages/slidev-addon-pptx/src/patch/patches/replaceMaster'
@@ -12,10 +12,13 @@ const REL = 'http://schemas.openxmlformats.org/package/2006/relationships'
 const RT = (n: string) => `http://schemas.openxmlformats.org/officeDocument/2006/relationships/${n}`
 
 describe('patch/replaceMaster (no-op)', () => {
-  it('MasterSwap の型: template / layoutMap / placeholderMap', () => {
-    expectTypeOf<MasterSwap>().toHaveProperty('template')
-    expectTypeOf<MasterSwap['layoutMap']>().toEqualTypeOf<Record<string, string>>()
-    expectTypeOf<MasterSwap['placeholderMap'][string]>().toEqualTypeOf<Record<'title' | 'body' | 'body2', { idx: number; type: string }>>()
+  it('MasterSwap の型（型の検査は replaceMaster.test-d.ts。ここでは値が作れることだけ）', () => {
+    const swap: MasterSwap = {
+      template: Buffer.alloc(0),
+      layoutMap: { cover: 'Title Slide' },
+      placeholderMap: { cover: { title: { idx: 0, type: 'ctrTitle' }, body: { idx: 1, type: 'subTitle' }, body2: { idx: 2, type: 'body' } } },
+    }
+    expect(Object.keys(swap).sort()).toEqual(['layoutMap', 'placeholderMap', 'template'])
   })
 
   it('swap を渡さなければ ZIP の全パートが元のまま', async () => {
