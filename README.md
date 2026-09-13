@@ -93,11 +93,37 @@ exit code: 0 成功 / 1 書き出し失敗または OPC エラー（`--strict` �
 |---|---|
 | 共通 | `x` `y` `w` `h`（Slidev のキャンバス px。1 つでも書けば座標指定）、`export="image"`（画像への置き換え）、`name`（PowerPoint の図形名） |
 | `PptText` | `align` `valign`（`h` を指定したときだけ）`size` `color` `bold` `italic` `fill` `line` `radius` `padding`。中身は Markdown（タグの前後に空行） |
-| `PptShape` | `type`（`rect` `roundRect` `ellipse` `line` `rightArrow` `leftArrow` `upArrow` `downArrow` `diamond` `triangle` `hexagon`）、`fill` `line` `radius` `rotate` `padding` `align` `valign` `size` `color`。中身は図形の中の文字（`line` では描かない）。形は PowerPoint の図形の近似 |
+| `PptShape` | `type`（PowerPoint の図形の名前。187 種）、`adj` `flipH` `flipV` `fill` `line` `radius` `rotate` `padding` `align` `valign` `size` `color`。中身は図形の中の文字（`line` では描かない） |
 | `PptImage` | `src` `alt` `fit`（`contain` `cover` `fill`） |
 | `PptTable` | `rows`（配列）か中身の Markdown 表、`header`（`rows` のときだけ）`colW` `border` `fill` `size` `align` `valign` |
 
 数式やコードブロックを画像で出したいときは `<div data-ppt-export="image">` で囲みます。
+
+### 図形（PptShape）
+
+`type` には PowerPoint の図形の名前（ECMA-376 の名前。`rect` `roundRect` `ellipse` `rightArrow` `wedgeRectCallout` `flowChartDecision` `star5` `bentConnector3` など 187 種）をそのまま書きます。
+形は PowerPoint の図形の定義の数式どおりに描くので、Slidev の画面と PowerPoint で同じ形になります。未知の名前は `rect` で描き、書き出しの記録に `W-SHAPE` が出ます。
+
+```md
+<!-- 調整値: キーと単位は PowerPoint の定義のまま（rightArrow の adj1 は柄の太さ、adj2 は頭の長さ。100000 分率） -->
+<PptShape type="rightArrow" :adj="{ adj1: 80000, adj2: 25000 }" :x="60" :y="80" :w="160" :h="60" fill="#fde68a">太い柄</PptShape>
+
+<!-- 反転: flipH で左向き。flipV は文字が 180 度回る -->
+<PptShape type="rightArrow" flipH :x="260" :y="80" :w="160" :h="60" fill="#bbf7d0">左へ</PptShape>
+
+<!-- 角丸は radius（px）か adj。line の head / tail はコネクタや円弧でも効く -->
+<PptShape type="roundRect" :radius="16" :x="460" :y="80" :w="160" :h="60">角丸</PptShape>
+<PptShape type="bentConnector3" :x="60" :y="180" :w="200" :h="100" :line="{ color: '#7c3aed', width: 2, tail: 'arrow' }" />
+```
+
+- `adj` を書かないキーは PowerPoint の既定です。キーの名前は図形ごとに違います（`adj`、`adj1` `adj2` …）
+- 文字は、`h` を書いた図形では PowerPoint と同じ文字の枠（楕円なら内接する矩形）に入り、`h` を書かない図形では枠全体に入ります
+- 全 187 種を並べたデッキが `tests/fixtures/deck/shapes.md` にあります。名前を探したり、形と調整値の効き方を見たりするのに使えます
+
+```sh
+pnpm exec slidev tests/fixtures/deck/shapes.md --open                       # 画面で見る
+pnpm exec slidev-pptx export tests/fixtures/deck/shapes.md -o shapes.pptx   # PowerPoint で見比べる
+```
 
 ## 記録と警告
 
@@ -108,6 +134,7 @@ exit code: 0 成功 / 1 書き出し失敗または OPC エラー（`--strict` �
   - `W-CSS` 再現できない装飾や色を捨てた / `W-MATH-INLINE` インライン数式を文字にした / `W-LI-BLOCK` 箇条書きの中の表や画像を無視した
   - `W-LAYOUT` 対応表に無いレイアウト、またはプレースホルダーに入れられず自由配置にした / `W-OVERFLOW` 枠に収まらないので縮小率を書いた / `W-OFFSLIDE` スライドの外に掛かるので寄せた
   - `W-IMAGE` 画像を取得できず灰色の矩形にした / `W-LINK` 相対リンクや範囲外のスライドへのリンクを外した
+  - `W-SHAPE` `PptShape` の未知の図形名を `rect` にした、定義に無いか範囲外の調整値を捨てた、未知の矢じりを `arrow` にした
   - `W-HIDDEN` 透明（opacity 0）かスライドの外の要素を飛ばした / `W-INLINE` 段落の中の svg などを無視した
   - `W-NESTED-PPT` `W-PPT-CONTENT` 部品の入れ子や部品の中の表 / `W-DARK` ダーク固定のデッキ / `W-TRANSITION`
   - `W-RENDER` Slidev の描画エラー、ブラウザのエラー、または UnoCSS のクラスが効かないページを測った（位置と色が Slidev と違うかもしれない）
