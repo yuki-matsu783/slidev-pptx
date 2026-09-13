@@ -1,6 +1,8 @@
 // 生成物。手で直さない。scripts/gen-presets.mjs で作り直す。
-// 元: ECMA-376 Part 1 の presetShapeDefinitions.xml（PowerPoint の図形 187 種の定義）。
-// 取得元: https://raw.githubusercontent.com/LibreOffice/core/master/oox/source/drawingml/customshapes/presetShapeDefinitions.xml
+// 元: ECMA-376 Part 1（Office Open XML File Formats, Fundamentals and Markup Language Reference）の
+// presetShapeDefinitions.xml。PowerPoint の図形 187 種の定義。Copyright © Ecma International.
+// 取得元: https://raw.githubusercontent.com/LibreOffice/core/500a70ba19d9c1207fd9121531950e55a70fd940/oox/source/drawingml/customshapes/presetShapeDefinitions.xml
+// XML の sha256: eaff19f4405b3be6822428c96ef46cc685499217366fd58e5e63a5a24739f02f
 import type { PresetShape } from './types.ts'
 
 export const PRESETS: Record<string, PresetShape> = {

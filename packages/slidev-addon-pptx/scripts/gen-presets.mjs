@@ -1,11 +1,16 @@
 // PowerPoint の図形の定義（ECMA-376 Part 1 の presetShapeDefinitions.xml）から src/shapes/presets.ts を作る。
 // 使い方: node packages/slidev-addon-pptx/scripts/gen-presets.mjs <presetShapeDefinitions.xml>
-// XML はリポジトリに置かない（約 540 KB）。取得元は生成物の先頭に書く。
+// XML はリポジトリに置かない（約 540 KB）。取得元と XML の sha256 は生成物の先頭に書く。
 // 残すのは描画に要る部分だけ: avLst（adj の既定）、gdLst（数式）、rect（文字の枠）、pathLst（輪郭）。接続点と調整ハンドルは捨てる。
+import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DOMParser } from '@xmldom/xmldom'
+
+/** 取得元。LibreOffice の、この XML を最後に変えたコミットに固定する */
+const SOURCE_COMMIT = '500a70ba19d9c1207fd9121531950e55a70fd940'
+const SOURCE_URL = `https://raw.githubusercontent.com/LibreOffice/core/${SOURCE_COMMIT}/oox/source/drawingml/customshapes/presetShapeDefinitions.xml`
 
 const src = process.argv[2]
 if (!src) {
@@ -14,7 +19,9 @@ if (!src) {
 }
 const out = resolve(fileURLToPath(new URL('.', import.meta.url)), '../src/shapes/presets.ts')
 
-const doc = new DOMParser().parseFromString(readFileSync(src, 'utf8'), 'text/xml')
+const xml = readFileSync(src)
+const sha256 = createHash('sha256').update(xml).digest('hex')
+const doc = new DOMParser().parseFromString(xml.toString('utf8'), 'text/xml')
 const kids = (el, name) => Array.from(el.childNodes).filter((n) => n.nodeType === 1 && (!name || n.localName === name))
 // 数式は空白が 2 つ続くことがある（`*/ vc  vf 100000`）
 const fmla = (s) => s.trim().split(/\s+/).join(' ')
@@ -55,8 +62,10 @@ const body = names.map((n) => `  ${n}: ${JSON.stringify(shapes[n])},`).join('\n'
 writeFileSync(
   out,
   `// 生成物。手で直さない。scripts/gen-presets.mjs で作り直す。
-// 元: ECMA-376 Part 1 の presetShapeDefinitions.xml（PowerPoint の図形 ${names.length} 種の定義）。
-// 取得元: https://raw.githubusercontent.com/LibreOffice/core/master/oox/source/drawingml/customshapes/presetShapeDefinitions.xml
+// 元: ECMA-376 Part 1（Office Open XML File Formats, Fundamentals and Markup Language Reference）の
+// presetShapeDefinitions.xml。PowerPoint の図形 ${names.length} 種の定義。Copyright © Ecma International.
+// 取得元: ${SOURCE_URL}
+// XML の sha256: ${sha256}
 import type { PresetShape } from './types.ts'
 
 export const PRESETS: Record<string, PresetShape> = {
@@ -64,4 +73,4 @@ ${body}
 }
 `,
 )
-console.log(`${names.length} shapes -> ${out}`)
+console.log(`${names.length} shapes (sha256 ${sha256}) -> ${out}`)
