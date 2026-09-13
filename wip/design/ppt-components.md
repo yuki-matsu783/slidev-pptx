@@ -3,6 +3,9 @@
 `native-export.md` の §2（Capture）に何をどう入れるかを決める。置き場は `packages/slidev-addon-pptx/components/`。
 `slides.md` からは `addons: [slidev-addon-pptx]` で読み込み、`<PptText>` のように使う。
 
+改訂（i0001-06）: 実装 i0001-04 で実物（Slidev 52.19.1 の DOM、PptxGenJS 4.0.1）と食い違った箇所と、設計に無かった判断を書き戻した。
+「実測」はその実装で確かめた結果を指し、検査は `tests/README.md` にある。
+
 ---
 
 ## 1. 部品の props
@@ -19,6 +22,7 @@
 - `x`/`y` だけ指定して `w`/`h` を省くと、幅は内容に従い（`width: max-content`、上限はスライド右端まで）、高さも内容に従う。その実測値を使う。
 - 得るもの: 「だいたい実測、要るところだけ座標」で書ける。
 - 失うもの: 座標指定した部品は Slidev の流し込みから外れ、他の要素と重なりうる。Slidev の画面でも重なるので気付ける。
+- PPT 部品と frontmatter `zoom` の組み合わせは**未定義**。`data-ppt-box` `padding` `radius` は props の生 px で Capture に入り、実測の値は zoom を掛けた後の px なので（§2.3）、同じスライドで混ぜると単位が揃わない。`zoom` を使うスライドには PPT 部品を置かない。
 
 ### 1.2 `PptText`
 
@@ -51,10 +55,17 @@ props を「書式の上書き」に絞り、Markdown の中身は slot に任�
 | `line` | `string \| 'none' \| { color, width, dash, head, tail }` | `'#000000'`（1 px） | 線。`'none'` で線なし。`head` `tail` は `'none' \| 'arrow' \| 'triangle' \| 'oval' \| 'diamond'`（`type: 'line'` のとき） |
 | `radius` | `number` | 8 | `roundRect` の角丸 px |
 | `rotate` | `number`（度） | 0 | 回転 |
-| `align` `valign` `size` `color` | `PptText` と同じ | | 図形の中の文字 |
+| `padding` | `number \| [t, r, b, l]`（px） | `[0, 8, 0, 8]` | 図形の中の文字の内側余白。CSS の padding と PPTX の inset（`frame.inset`）の両方に使う |
+| `align` `valign` | `PptText` と同じ | `'center'` / `'middle'` | 図形の中の文字。既定は `PptText`（左・上）と違い PowerPoint の図形と同じ中央 |
+| `size` `color` | `PptText` と同じ | 実測 | 図形の中の文字 |
 
-中身は default slot（図形の中の文字。段落の規則は `PptText` と同じ）。
+中身は default slot（図形の中の文字。段落の規則は `PptText` と同じ）。`type: 'line'` の slot は描かない（線の上に文字は置けない）。
 描画: `rect` `roundRect` は `div` に border / background / border-radius。それ以外は inline SVG（`<svg viewBox>` に `path`）を背景に敷き、文字は上に重ねる。`type: 'line'` は `x y w h` で対角線を引く（`w` か `h` が 0 なら水平・垂直）。
+SVG で描く形は PowerPoint の preset（`prstGeom`）の既定 adj とは別物で、Slidev の画面は近似。矢印の柄の太さや六角形の角の位置は PowerPoint で開くと少し変わる。
+
+- `align` / `valign` の既定を中央にする理由: PowerPoint で図形に文字を入れると中央に置かれる。「PptText と同じ」（左・上）にすると、Slidev の画面と PowerPoint で新しく足した図形の見た目が食い違う（実装 i0001-04 で変更）。
+- 得るもの: Slidev で書いた図形の文字が PowerPoint の図形の流儀と同じ位置に出る。
+- 失うもの: `PptText` と `PptShape` で既定が違うので、覚えることが 1 つ増える。
 Capture: `kind: 'shape'`（`line` は `kind: 'line'`）。`rotate` があるとき `box` は回転前の枠（`data-ppt-box` と `data-ppt-opts.rotate` から復元。回転後の外接矩形は使わない）。
 
 - 得るもの: PowerPoint の図形と 1:1。
@@ -79,7 +90,7 @@ Capture: `kind: 'shape'`（`line` は `kind: 'line'`）。`rotate` があると�
 | prop | 型 | 既定 | 意味 |
 |---|---|---|---|
 | `rows` | `string[][]` | なし | データで表を作るとき。1 行目が見出し |
-| `header` | `boolean` | `true` | 1 行目を見出し扱い（太字、塗り） |
+| `header` | `boolean` | `true` | `rows` の 1 行目を見出し扱い（`thead` に描く）。**slot の Markdown 表には効かない**（markdown-it が作る `thead` はそのまま。`headerRows` は常に `thead > tr` の数で、収集器は `opts.header` を読まない） |
 | `colW` | `number[]`（px） | 実測 | 列幅。指定すれば `<col>` で描画にも効かせる |
 | `border` | `string \| { color, width }` | 実測 | 全セルの罫線 |
 | `fill` | `string` | なし | 全セルの塗り |
@@ -121,7 +132,8 @@ JSON にできない props は無いので、属性を選ぶ。
 1. `#print-content > .print-slide-container` を順に取る。`canvas.width/height` はこの要素の rect。`backgroundColor` はこの要素の computed。
 2. その中の `[data-slidev-no]` から `no` と `lang`。`.slidev-page` の `scale` を `zoom` に。
 3. `[data-slidev-no]` から子孫へ降りて**根の列**を作る。`.slidev-layout` に当たったらそれを根の 1 つにして、その下へは降りない。`.slidev-layout` でなく、子孫にも `.slidev-layout` を持たない要素のうち最上位のもの（`image-right` の右半分 `div[style*=background-image]` など）を根の 1 つにする。外側の `div.grid` は子孫に `.slidev-layout` を持つので根にならない。根の列は文書順。
-4. 根ごとに、子を文書順に歩く（§2.2）。根が `.slidev-layout` で直下に `.col-left` と `.col-right` があれば（`two-cols`）、その 2 つを副領域にして別々に歩く（`.col-right` の要素は `roleHint` の候補が `body2` になる）。
+4. 根が `.slidev-layout` のときは、**根自身の装飾も読む**。computed `background-image` に `url()` があれば画像要素にする（`layout: image` が根の style に背景を置く。ただし `cover` / `intro` の背景は `frontmatter.background` から Node が取るので（native-export.md §5.5）、根に `.cover` / `.intro` の class があれば読まない）。computed `background-color` が透明でなければ `SlideCapture.backgroundColor` を上書きする（`layout: end` の黒、`layoutClass` の塗り）。
+5. 根ごとに、子を文書順に歩く（§2.2）。`.col-left` と `.col-right` に当たったら（`two-cols`、`two-cols-header`）、その 2 つを副領域にして別々に歩く（`.col-right` の要素は `roleHint` の候補が `body2` になる）。`two-cols-header` の `.col-header` / `.col-bottom` は副領域にせず、根の領域として歩く（見出しは `title` 候補のまま）。
 
 ### 2.2 要素の分類（歩く順に判定。最初に当たった行で決まる）
 
@@ -130,18 +142,18 @@ JSON にできない props は無いので、属性を選ぶ。
 | # | 条件 | 扱い |
 |---|---|---|
 | 0 | Slidev の UI（`.slidev-code-copy`、`.slidev-icon`、`.slidev-icon-btn`、`SlideTop` / `SlideBottom` が描く要素、`[data-slidev-clicks-start]` の印だけの空要素） | 警告なしで飛ばす。コードブロックのコピーボタンは `opacity: 0` で全スライドにあるので、ここで消さないと雑音になる |
-| 1 | 表示されていない（`display:none`、`visibility:hidden`、`opacity: 0`（祖先の積）、rect が空、キャンバスの外） | 飛ばす。`opacity: 0` とキャンバス外は `W-HIDDEN`、それ以外は無警告 |
+| 1 | 表示されていない（`display:none`、`visibility:hidden`、`opacity: 0`（祖先の積）、rect が空、キャンバスの外） | 飛ばす。`opacity: 0` とキャンバス外は `W-HIDDEN`、それ以外は無警告。「rect が空」は幅 0 かつ（高さ 0 か `hr` でない）かつ子が無い。`hr` は高さ 0〜1 px なので、`w === 0 \|\| h === 0` で判定すると 10 に届かない（実測） |
 | 2 | `[data-ppt]` | PPT 部品（§1）。中に `[data-ppt]` があれば `W-NESTED-PPT` で無視 |
 | 3 | `[data-ppt-export="image"]`（部品以外の要素に手で付けたもの） | 画像への置き換え、`reason: 'explicit'` |
 | 4 | `background-image` を持つ要素（`img` 以外） | 子孫に可視テキストが無ければ: `url()` があれば画像要素（URL を取得。`linear-gradient` が重なっていれば捨てて `W-CSS`）、`url()` が無ければ画像への置き換え `reason: 'gradient'`。子孫に可視テキストがあれば: 要素ごと画像への置き換え `reason: 'explicit'`（文字も絵になるが見た目は合う。文字を編集したければ背景を `PptShape` か `PptImage` に分けて書く）。どちらも**中は歩かない** |
-| 5 | `.katex-display`、`.mermaid`、`svg`、`canvas`、`iframe`、`video`、`audio`、`object`、`embed`。**`p` の中身が `.katex-display`（と空白）だけなら、その `p` ごと**（Slidev はブロック数式を `div.slidev-katex-wrapper > p > span.katex-display` で描くので、`p` を 11 で拾うと数式に到達しない） | 画像への置き換え（`reason: 'math' \| 'mermaid' \| 'svg'`）。`.mermaid` の中は Shadow DOM で歩けないが、撮影はホスト要素で足りる |
-| 6 | `img` | 画像要素（`src` を取得） |
+| 5 | `.katex-display`、`.mermaid`、`svg`、`canvas`、`iframe`、`video`、`audio`、`object`、`embed`。**`p` の中身が 5 か 6 の要素 1 つ（と空白）だけなら、その `p` ごと**（markdown-it は `![]()` を `<p><img></p>` に、Slidev はブロック数式を `div.slidev-katex-wrapper > p > span.katex-display` で描くので、`p` を 11 で拾うと中身に到達しない。実装 i0001-04 は `.katex-display` / `svg` / `.mermaid` / 15 のタグで実装済み。`img` は未対応で 11 に落ちて `W-INLINE` になる。次の実装で足す） | 画像への置き換え（`reason: 'math' \| 'mermaid' \| 'svg'`。`p` の中身が `img` なら 6 の画像要素）。`.mermaid` の中は Shadow DOM で歩けないが、撮影はホスト要素で足りる |
+| 6 | `img` | 画像要素（`src` を取得。`a > img` なら `link` を要素に。§3.3） |
 | 7 | `table` | 表要素（§3.5） |
 | 8 | `pre` | コードブロック（§3.6）、区切りブロック |
 | 9 | `blockquote` | 引用（§3.7）、区切りブロック |
 | 10 | `hr` | 線要素（実測の上辺、computed `border-top-color`） |
-| 11 | `h1`–`h6` `p` `ul` `ol` | 流し込みブロック（§3.1） |
-| 12 | `div` `section` `article` `main` `aside` `header` `footer` `span` `figure` で、**装飾を持たない** | 透明な入れ物。中を歩く（`.col-left` `.col-right` もここ）。**子に可視のテキストノードや inline 要素を直接持つなら、文書順に、連続する inline の連なりごとに 1 つの `plain` 段落として流し込みブロックに数える**（ブロックの子が間に入れば、そこで連なりが切れる。markdown-it の HTML ブロックは `<p>` に包まれない。`slides.md` の `<span>Space / → で次へ</span>` や `<div v-click>クリックのたびに…</div>` がこれ） |
+| 11 | `h1`–`h6` `p` `ul` `ol` | 流し込みブロック（§3.1）。段落の中に `svg` `img` `table` `pre` `.katex-display` `.mermaid` などの区切りブロックがあれば、その要素は `W-INLINE` を出して無視する（画像への置き換えは枠の単位で、段落の途中には置けない） |
+| 12 | `div` `section` `article` `main` `aside` `header` `footer` `span` `figure` `a`（および `strong` `em` `code` などの inline タグ）で、**装飾を持たない** | 透明な入れ物。中を歩く（`.col-left` `.col-right` もここ）。**子に可視のテキストノードや inline 要素を直接持つなら、文書順に、連続する inline の連なりごとに 1 つの `plain` 段落として流し込みブロックに数える**（ブロックの子が間に入れば、そこで連なりが切れる。markdown-it の HTML ブロックは `<p>` に包まれない。`slides.md` の `<span>Space / → で次へ</span>` や `<div v-click>クリックのたびに…</div>` がこれ） |
 | 13 | 12 のタグで装飾を持ち、**装飾を持たない入れ物（12）だけを通って**到達する子孫が 11・裸のテキスト・inline 要素だけ（子が無い場合も含む。ただし 4 で先に拾われる） | 自前のテキスト枠（区切りブロック）。中の入れ物は透明に抜けて段落になる。装飾は `frame` に変換し、変換できないものは `W-CSS` |
 | 14 | 12 のタグで装飾を持ち、子孫に 3–10 か 13（装飾つきの入れ物）がある | 装飾を `W-CSS` で捨てて、透明な入れ物として中を歩く |
 | 15 | それ以外（`button` `input` `details` `kbd` を含む未知タグ、Vue 部品が描く任意の要素）。`kbd` は inline で現れたときは §3.4 の run になり、ブロックとして現れたときだけここ | 画像への置き換え、`reason: 'unknown-element'` |
@@ -225,24 +237,24 @@ h2 → title 候補 / p → body 候補 / div.mt-6 > Counter(button) → image(u
 | `.katex-display` | image（`reason: 'math'`） | 2 倍で撮る |
 | `.mermaid` `svg` | image（`reason: 'mermaid' \| 'svg'`） | 同上 |
 | 装飾つきの箱（2.2 の 13） | text | `frame` に背景色・border・角丸・padding・opacity |
-| `background-image` の要素（2.2 の 4） | image | `image-right` の右半分など。`cover` の背景は `.slidev-layout` 自身の style なので収集器は見ず、Node が `frontmatter.background` から取る（native-export.md §5.5） |
+| `background-image` の要素（2.2 の 4、§2.1 の根自身） | image | `image-right` の右半分、`layout: image` の根など。`cover` / `intro` の背景は `frontmatter.background` から Node が取るので収集器は見ない（native-export.md §5.5） |
 
 ### 3.4 run の規則（inline）
 
 | HTML | Run |
 |---|---|
-| テキストノード | `text`（連続する空白は 1 つに。`pre` の中は保つ） |
+| テキストノード | `text`（連続する空白は 1 つに。`pre` の中は保つ）。畳む空白は CSS の `white-space: normal` と同じ `[ \t\r\n\f]` だけ。全角空白 U+3000 と NBSP は文字として保つ（`\s` で畳むと「全角　空白」が潰れる。実測） |
 | `strong` `b`、computed `font-weight >= 600` | `bold` |
 | `em` `i`、computed `font-style: italic` | `italic` |
 | `code` `kbd` | `code: true`、`highlight` = computed 背景色 |
-| `a[href]` | `link: { url }`。`href` が `#N` か `/N` なら `{ slide: N }` |
+| `a[href]` | `href` は属性の生の値で読む（`a.href` は正規化で末尾に `/` が付く）。`#N` `##N` `/N` なら `{ slide: N }`（Slidev は `[x](#3)` を `href="##3"` にする。実測）。スキーム付き（`https:` `mailto:` など）なら `link: { url }`。それ以外（相対パス、数字でないアンカー）は開発サーバの URL に解決されて PPTX に残るので外し、`W-LINK` |
 | `del` `s` | `strike` |
-| `u`、computed `text-decoration-line` に underline | `underline`（`a` の下線は除く。Slidev の `a` は border-bottom で下線を描く） |
+| `u`、computed `text-decoration-line` に underline | `underline`（`a` の下線は除く。Slidev の `a` は border-bottom で下線を描く。ただし `a` の中の `u` は本物の下線） |
 | `sup` `sub` | `sup` / `sub` |
 | `mark` | `highlight` = computed 背景色 |
 | `.katex`（インライン数式） | `.katex-html` の `textContent` を 1 run（`italic`）。`W-MATH-INLINE` |
-| computed `color` | `color`（親と同じでも毎回入れる。Node 側で省く） |
-| computed `opacity`（祖先の積） | `transparency` |
+| computed `color` | `color`（親と同じでも毎回入れる。Node 側で省く）。`rgb()` `rgba()` `#` 以外の形式（`oklch()` `color()` など）と `transparent` は読めないので**黒**にして `W-CSS`（要素ごとに 1 回）。白にすると白地で見えなくなる |
+| computed `opacity`（祖先の積）と `color` のアルファ | `transparency = 100 − opacity × 100`。Node 側で PptxGenJS に渡す直前に整数に丸める（`<a:alpha>` は整数） |
 | computed `letter-spacing` | `charSpacing` |
 | `span` `em` などの入れ子 | 平坦化。書式は computed から run ごとに読む |
 | `text-transform` | 無視して `textContent` のまま。`W-CSS` |
@@ -253,6 +265,8 @@ h2 → title 候補 / p → body 候補 / div.mt-6 > Counter(button) → image(u
 - セルは `td` / `th` を 1 段落。`th` は computed の太さに従う（Slidev の `th` は `font-400`）。
 - `colspan` `rowspan` はそのまま。
 - 罫線は computed の `border-{top,right,bottom,left}-{width,color}` を 4 辺別に。無い辺は `{ width: 0, color: '' }`。Slidev 既定は `tr` の `border-b` だけ → 下辺のみ（下辺だけの出力は実測で確認済み）。
+  - セルの computed では 4 辺とも 0 になる（Slidev は `tr { border-b }` で引く。実測）。セルの辺が 0 なら、上下は `tr`、左右は `table` の同じ辺へ遡って読む。`tr` の色は `rgba(…, 0.2)` のような半透明なので、色はアルファを落として `#rrggbb` にする（罫線に透明度は渡さない）。
+- `caption` は表の要素にせず、表の**前**の自由配置の段落（テキスト枠、`inset` 0）にする。PptxGenJS の表にキャプションは無い。
 - `inset` はセルの padding（Slidev は `p-2 py-3`）。
 - `align` は computed `text-align`、`valign` は `vertical-align`。
 - `colW` は 1 行目の各セルの rect 幅、`rowH` は各 `tr` の rect 高さ。
@@ -261,6 +275,7 @@ h2 → title 候補 / p → body 候補 / div.mt-6 > Counter(button) → image(u
 
 - `pre .line` を 1 行 1 段落（`kind: 'code'`）。`.line` が無ければ `textContent` を改行で割る。
 - 色付け（Shiki の `span style="--shiki-light: …"`。色は CSS 変数経由で、`emulateMedia({ colorScheme: 'light' })` が効いている前提で computed に解決される）は捨てて、`pre` の computed `color` を全 run に使う。行番号（`lineNumbers: true`）と行強調（`{2|4-6}`。print では全行に `slidev-code-highlighted highlighted` が付くので、この class は無視する）は捨てる。行頭の空白は保つ（native-export.md §11 の 2）。
+- 行強調で強調されない行は `.slidev-code-dishonored`（`opacity: 0.3`）になる。コード枠の中では §3.4 の opacity → `transparency` を**当てない**（行強調は捨てる規則なので、薄い行を作らない。実測）。
 - `frame.fill` は `pre` の computed 背景色、`frame.inset` は padding、`frame.radius` は border-radius。
 - `W-CSS` は出さない。色付けを捨てるのは規則（親チケットの決定）で、`Report.dropped['code-highlight']` に件数だけ出す。
 - 画像で出したいときは `<div data-ppt-export="image">` で囲む。

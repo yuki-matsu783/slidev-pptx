@@ -6,7 +6,10 @@
 制約の側を再調査して直す（§10 に 1 件ある）。用語は `CONTEXT.md` に従う。部品側の設計は `ppt-components.md`。
 
 判断ごとに「得るもの / 失うもの」を併記する。実装前に確かめる項目は末尾の「要確認」に集める。
-本文の「実測」は、この設計を書く過程で PptxGenJS を実際に動かして出力 XML を見た結果を指す。
+本文の「実測」は、この設計を書く過程で PptxGenJS を実際に動かして出力 XML を見た結果と、実装 i0001-04 で確かめた結果を指す。
+
+改訂（i0001-06）: 実装 i0001-04 で実物と食い違った箇所と、設計に無かった判断を書き戻した（§1.2、§3.2、§3.3、§4.1〜§4.4、§5.2、§7、§8、§11）。
+検査は `tests/README.md` にある。
 
 ---
 
@@ -45,14 +48,21 @@ pnpm export:pptx
 ### 1.2 ブラウザの開き方
 
 - サーバは必ず `mode: 'export'` で立てる（`/print` ルートはこのモードでしか無い。`window.__slidev__` は使えないので頼らない）。
+- サーバを立てる間は `NODE_ENV=development` にする（元の値は終わったら戻す）。`test`（vitest）や `production` だと Vite の開発サーバで UnoCSS がデッキ由来のクラスを生成せず、`.pt-12` などが永遠に効かない（実測）。
 - URL は `/print?print=true`。`PrintSlide.vue` は `print=true` のとき `createFixedClicks(route, CLICKS_MAX)` で描くので、クリック要素は全部出た状態の 1 枚になる（親チケットの決定）。`?print=clicks` はアニメーション変換の段階まで使わない。
   - 得るもの: スライド 1 枚 = PPTX 1 枚で、クリック数を数えなくてよい。
   - 失うもの: `v-click` で「ある段階だけ見せて消す」要素（`v-click.hide` や `[a, b]` の範囲指定）は、最終状態で消えていれば出ない。出したければ `?print=clicks` を使うアニメーション変換を待つ。
-- `--range` はそのまま `&range=` に渡す。
+- `--range` は `&range=` に渡したうえで、**Node 側でも絞る**（Capture の `slides` を範囲で filter）。Slidev の `/print` は `useNav` の初期化時に `query.range` を 1 度読むだけで、この経路では効かないことがある（実測）。viewport の高さは範囲の枚数で決める。
 - 待機は Slidev `exportSlides` の `go()` と同じ手順を自前で持つ: `[data-slidev-no]` の出現 → `.slidev-slide-loading` の消滅 → `[data-waitfor]` → iframe / mermaid / monaco の描画 → `networkidle`。`--wait <ms>` で追加待機。
+- その前に **Vite の依存最適化の再読み込み**を待つ。作業ツリーで初めてサーバを立てると "optimized dependencies changed. reloading" でページが読み直され、収集の最中に来ると `page.evaluate` の実行文脈が壊れる。`.print-slide-container` の枚数が揃うまで 1 秒ずつ最大 10 回待ち、`page.evaluate(collect)` が "Execution context was destroyed" で失敗したら 1 回だけやり直す（実測。e2e が初回だけ失敗する原因だった）。
+- 待機列の最後に **UnoCSS の生成の確認**を置く。Vite の開発サーバでは、デッキ由来のユーティリティクラス（`pt-12` `text-3xl` など）の CSS が最初の読み込みで生成されないことがあり、そのまま測ると余白や文字の大きさが誤る。2 つの信号を見て、どちらかが無ければ `page.reload()` して待機列をやり直す（最大 3 回）。3 回で来なければそのまま測り、`W-RENDER`（slide 0）を出す。
+  - A: `[data-slidev-no]` の下の要素の class のうち、デッキ由来とみなすもの（`slidev-` `ppt-` `katex` `shiki` などの接頭辞を除き、`-` `:` `/` `[` `]` か数字を含むもの。`.katex` `.mermaid` `pre` `svg` の子孫は除く）に CSS 規則がある割合が **50% 以上**。「1 つでも当たれば ok」では判定できない（KaTeX の同梱 CSS や `text-white` は生成前でも当たる。実測: 生成前 0.03、生成後 0.81〜0.87）。
+  - B: `__uno.css` / `__uno_shortcuts.css` の `<style data-vite-dev-id>` の長さの合計が **1000 以上**（実測: 生成前 25 / 2572、生成後 1009 / 6539 以上）。その `<style>` 自体が無ければ（UnoCSS を使わないテーマ）B は ok。
+  - 得るもの: 生成が遅れた run で黙って誤った値を測らない。
+  - 失うもの: しきい値（50%、1000）は Slidev 52.19 と theme-default の実測で、テーマが変わればずれうる。3 回の再読み込みで数秒延びる。
 - viewport は `width: canvasWidth, height: canvasHeight × 枚数`（Slidev と同じ。要素の rect は `.print-slide-container` の rect との差で取るので、スクロール位置に依らない）。
 - `emulateMedia({ colorScheme: 'light' })`。デッキが `colorSchema: dark` を固定していれば警告 `W-DARK` を出し、測れた色のまま出す。
-- headmatter の `transition` は捨てる（PptxGenJS に API が無い）。1 回だけ `W-TRANSITION` を出す。
+- headmatter の `transition`（とスライドの frontmatter の `transition`）は捨てる（PptxGenJS に API が無い）。`Report.dropped['transition']` に 1 を出す。警告 `W-TRANSITION` は**出さない**（§8.2 の決定）。
 
 ---
 
@@ -223,7 +233,7 @@ XML は文字列置換ではなく DOM（`@xmldom/xmldom`）で触る。
 | 2 | `dropEmptyPlaceholders` | `ppt/slides/*.xml` | `<p:ph>` を持つ `<p:sp>` のうち `<a:t>` に文字が無いものを消す | 必須（`masterName` 付きスライドには未使用 placeholder が必ず足される。実測） |
 | 3 | `dedupeParagraphProps` | `ppt/slides/*.xml` `ppt/notesSlides/*.xml` | 各 `<a:p>` の `<a:pPr>` を先頭の 1 つだけ残す（2 つ目以降を消す。先頭の `<a:pPr>` が `<a:r>` の後ろにあれば最初の子に移す） | **必須**（PptxGenJS は run ごとに `<a:pPr>` を出し、`bullet` の無い run にも `<a:buNone/>` 付きの `<a:pPr>` を書く。太字やリンクを含む段落は必ず 2 つ以上になる。実測。`CT_TextParagraph` は先頭に高々 1 つ） |
 | 4 | `applyAutofitScale` | `ppt/slides/*.xml` | `ctx.autofit[no]` の図形名で `<p:sp>` を引き、`<a:bodyPr>` の**既存の** `<a:normAutofit>` に `fontScale` `lnSpcReduction` を足す（無ければ 1 つ作る。2 つにはしない） | 条件つき |
-| 5 | `splitNotesParagraphs` | `ppt/notesSlides/*.xml` | `<a:t>` の CRLF を `<a:p>` の区切りに割る。割って作る `<a:p>` には元の `<a:pPr>` を先頭に 1 つだけ複製する（3 の後に走るので、C14 の不変条件を自分で守る） | 必須（PptxGenJS は 1 つの `<a:t>` に CRLF で詰める。実測） |
+| 5 | `splitNotesParagraphs` | `ppt/notesSlides/*.xml` | `<a:t>` の改行を `<a:p>` の区切りに割る。区切りは `\r\n` `\r` `\n` のどれでも（PptxGenJS は CRLF で詰めるが、`@xmldom/xmldom` は XML の行末正規化で parse 時に LF にするので、DOM で見えるのは LF。実測）。割って作る `<a:p>` には元の `<a:pPr>` を先頭に 1 つだけ複製する（3 の後に走るので、C14 の不変条件を自分で守る） | 必須（PptxGenJS は 1 つの `<a:t>` に CRLF で詰める。実測） |
 | 6 | `replaceMaster` | マスター・レイアウト・テーマ・各スライドの rels | **将来のマスター差し替えの継ぎ目**。今回は no-op。§5.4 | 継ぎ目 |
 | 7 | `rebuildContentTypes` | `[Content_Types].xml` | ZIP の実在パートから作り直す。`Default` は **ZIP に実在する拡張子**から（固定リストを持たない）、`Override` はパートの種類ごと | **必須**（実在しない `slideMasterN.xml` の Override が混ざる。実測） |
 
@@ -238,10 +248,12 @@ XML は文字列置換ではなく DOM（`@xmldom/xmldom`）で触る。
 ### 3.3 `normAutofit` の縮小率
 
 - 全てのテキスト枠（placeholder と自由配置）に `fit: 'shrink'` を付けて `<a:normAutofit/>` を出す（placeholder 指定でも出ることは実測済み）。PowerPoint は編集時に自分で縮小率を計算し直す。
-- 書き出し直後に溢れないよう、収集した `fit.contentHeight > fit.boxHeight`（Slidev 側で既に溢れて隠れている）か、換算後の枠の高さより文章の推定高さ（段落の行数 × lineHeight の合計を換算したもの。placeholder 枠は対応表の h と比べる）が大きいときに、
-  `fontScale = floor(boxHeight / contentHeight × 100) × 1000`（下限 25000）、`lnSpcReduction = 10000`（fontScale < 90000 のとき 20000）を `ctx.autofit` に入れ、警告 `W-OVERFLOW` を記録する。
+- 書き出し直後に溢れないよう、2 つの条件のそれぞれで「枠 ÷ 内容」の比を出し、**小さいほう**を採る:
+  - A: 収集した `fit.contentHeight > fit.boxHeight`（Slidev 側で既に溢れて隠れている）→ `boxHeight / contentHeight`
+  - B: 出す枠の高さより `fit.contentHeight` が大きい → `枠の高さ / contentHeight`。枠の高さは、placeholder なら対応表（§5.2）の `h`（対応表の px はキャンバス px と同じ空間）、自由配置なら寄せた後の `box.h`
+- 比が **0.95 未満**（5% を超えて溢れる）のときだけ、`fontScale = floor(比 × 100) × 1000`（下限 25000）、`lnSpcReduction = 10000`（fontScale < 90000 のとき 20000）を `ctx.autofit` に入れ、警告 `W-OVERFLOW` を記録する。5% の余裕は、計測環境と PowerPoint のフォント差で行数が数 % 動くため（数 % の縮小率は当たらないうえ、警告が雑音になる）。
 - 得るもの: 開いた瞬間に文字が枠からはみ出ない。
-- 失うもの: 縮小率は Slidev のフォントで測った推定。PowerPoint の游ゴシックでは行数が変わりうるので、正確には合わない。PowerPoint がリサイズ時に計算し直すので、ずれは 1 回の編集で解消する。
+- 失うもの: 縮小率は Slidev のフォントで測った推定。PowerPoint の游ゴシックでは行数が変わりうるので、正確には合わない。PowerPoint がリサイズ時に計算し直すので、ずれは 1 回の編集で解消する。5% 未満の溢れはそのまま出る（PowerPoint が開くときに `normAutofit` で縮める）。
 
 ### 3.4 OPC 整合チェッカ
 
@@ -258,7 +270,7 @@ XML は文字列置換ではなく DOM（`@xmldom/xmldom`）で触る。
 | C7a sldId の解決 | `presentation.xml` の `sldId r:id` / `sldMasterId r:id` / `notesMasterId r:id` が `presentation.xml.rels` に在る | error |
 | C7b sldLayoutId の解決 | `slideMasterN.xml` の `sldLayoutId r:id` が `slideMasterN.xml.rels` に在る | error |
 | C8 placeholder の対応 | スライドの `<p:ph idx type>` が、そのレイアウトに同じ `idx` の placeholder を持つ（`idx` 無しの `type="title"` は可） | warn |
-| C9 空 xfrm | `<a:ext cx="0" cy="0"/>` の図形（PowerPoint は開けるが選べない） | warn |
+| C9 xfrm の値 | `<a:ext cx="0" cy="0"/>` の図形（PowerPoint は開けるが選べない）は warn。`<a:off>` `<a:ext>` の `x y cx cy` が負なら error（§4.1 の負のインチ。実測） | warn / error |
 | C10 r:* の逆引き | 各パートの `r` 名前空間（relationships）の全属性（`r:id` `r:embed` `r:link`、将来のグラフの `r:dm` など）の値が、そのパートの rels に在る | error |
 | C11 autofit の重複 | `<a:bodyPr>` の子に `normAutofit` `spAutoFit` `noAutofit` が 2 つ以上ない | error |
 | C12 ph idx の一意 | 1 スライド内で `idx` 属性を持つ `<p:ph>` の `idx` が重複しない（`idx` 無しは C8 の扱い） | error |
@@ -289,7 +301,8 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 
 **座標（x y w h、表の colW rowH）は EMU の整数で渡す。** PptxGenJS は `x y w h` を `getSmartParseNumber`（100 未満ならインチ、**100 以上**なら EMU）で、表の `colW` `rowH` を `inch2Emu`（**100 より大きい**ときだけ EMU。ちょうど 100 は 100 インチになる。実測）で解く。
 - 0 は 0 のまま。1 以上 100 以下は **101** に切り上げる（座標も表も同じ関数で。0.001 インチ未満なので見えない）。
-- **負の値**はインチ扱いになって壊れる（`-5` → −5 インチ）。スライドの外に掛かる要素は**常に**内側に寄せる: x / y が負なら 0 に、右端・下端がスライドを超えていれば w / h を縮める（左端・上端は動かさない）。縮めた結果 w か h が 0 以下（x が −100 で w が 50 など、全体が外にある）なら要素を除外して `W-HIDDEN`。
+- **負の値**はインチ扱いになって壊れる（`-5` → −5 インチ。PptxGenJS に負のインチを渡すと `cx="-113758675200"` のような値が出る。実測）。スライドの外に掛かる要素は**常に**内側に寄せる: x / y が負なら 0 に、右端・下端がスライドを超えていれば w / h を縮める（左端・上端は動かさない）。縮めた結果 w か h が 0 以下（x が −100 で w が 50 など、全体が外にある）なら要素を除外して `W-HIDDEN`。placeholder に入る枠は座標を渡さないので寄せない。
+- 線（`hr` と `PptShape type="line"`）は `box` でなく**端点**（`from` / `to`）をキャンバスの中に寄せる（両端をそれぞれ 0〜幅、0〜高さに丸める。傾いた線は向きを保つ）。どちらかの軸で全体が外（水平線が y < 0、縦線が x > 幅、など）なら除外して `W-HIDDEN`。§3.4 の C9 は `cx cy` に加えて負の `x y cx cy` も error にする。
 - 寄せた量が **5 px 以上**のときだけ `W-OFFSLIDE` を出す。Slidev の `h1 { -ml-[0.05em] }` で x が −2 px になるのは全スライドで起きるので、5 px 未満は寄せるだけで黙る。
 - フォント pt は PptxGenJS が `sz = round(pt × 100)` にする。
 
@@ -305,6 +318,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 |---|---|---|
 | `roleHint` があり、§5.1 で解いたレイアウトの対応表（§5.2）に同名の placeholder がある | `placeholder: roleHint`（座標は渡さない。レイアウトの値が勝つ）。**role の確定は Node の仕事**。収集器はレイアウト名も対応表も知らないので、候補（`roleHint`）だけを記録する | |
 | `roleHint` があるが対応表に無い（`blank`、`two-cols` 以外の `body2` など） | 自由配置にする。`blank` 以外なら `W-LAYOUT` に理由を添える（綴り違いの placeholder 名を PptxGenJS に渡すと `<p:ph>` の無い枠が左上に出る。実測） | EMU |
+| 同じスライドで同じ `roleHint` の枠が 2 つ以上（`two-cols-header` の左右に見出しがある、など） | 文書順で最初の 1 つだけ placeholder に入れ、2 つ目以降は自由配置にして `W-LAYOUT`。同じ role を 2 つ入れると `<p:ph idx>` が重複して C12 で止まる（実測） | EMU |
 | それ以外（自由配置） | `x y w h` | EMU |
 | `rotate` | `rotate` | 度 |
 | `Paragraph.kind: 'bullet'` | `bullet: { characterCode: '25AA' }`（Slidev の square）、`indentLevel: level`。字下げ幅は PptxGenJS の 1 段 342900 EMU（約 27 px）に任せる（Slidev の `li { ml-1.1em pl-0.2em }` ≈ 23 px と近い）。`bullet.indent` は記号と文字の間隔で、字下げではないので使わない | |
@@ -317,7 +331,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 | `Run.link.url` | `hyperlink: { url }`。`{ slide }` → `hyperlink: { slide }` | |
 | `Run.code` | `fontFace: <等幅>`、`highlight: <inline code の背景色>` | |
 | `Run.sup / sub` | `superscript` / `subscript` | |
-| `Run.transparency` | `transparency` | 0–100 |
+| `Run.transparency` | `transparency`（整数に丸める） | 0–100 |
 | `Run.charSpacing` | `charSpacing` | pt |
 | `frame.fill` `line` | `fill: { color, transparency }` `line: { color, width, dashType }`。Capture の `dash: 'dot'` は PptxGenJS の型に無いので `'sysDot'` に変換する | `width` は pt |
 | `frame.radius` | `rectRadius` と `shape: 'roundRect'` | **インチ**（`inch(px)`。PptxGenJS は `adj = round(rectRadius × 914400 × 100000 / min(cx, cy))` で、EMU を渡すと桁あふれする） |
@@ -334,7 +348,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 | line | `addShape(ShapeType.line, { x y w h, line: { color, width, dashType, beginArrowType, endArrowType }, flipV })`。`from/to` から `x y w h` と `flipV` を決める |
 | image | `addImage({ data: 'data:image/png;base64,…', x y w h, altText, sizing, hyperlink })`。`fit: 'contain' \| 'cover'` → `sizing: { type, w, h }`、`'fill'` と未指定 → `sizing` 無し（`type: 'fill'` を渡すと `addImage` は通るが `write()` が `TypeError` で落ちる。実測）。`addImage` の `hyperlink` は自前で rels を登録するので使える。URL は Node が fetch し、失敗したら `W-IMAGE` を出して灰色の矩形（`rect`）を置く |
 | image（SVG） | `src` の拡張子または `content-type` が SVG なら `addImage` に渡さず、その `<img>` を撮影に回す（`data-ppt-capture-id` を振って `locator.screenshot()`）。PptxGenJS の SVG 経路は `image-N.png` の中身に SVG を書くので壊れた PPTX になる（`addImageDefinition` の `isSvgPng`）。置き換え一覧に `reason: 'svg'` で載せる |
-| table | `addTable(rows, { x y w, colW: EMU[], rowH: EMU[] })`。セルは `{ text: TextProps[], options: { colspan, rowspan, fill, align, valign, border, margin } }`。`border` は **4 辺必ず埋める**（未指定の辺は PptxGenJS が `DEF_CELL_BORDER`（solid / 666666 / 1 pt）で補うので、線の無い辺を明示しないと罫線が増える。`undefined` があっても落ちはしない。実測）: `width: 0` → `{ type: 'none' }`、それ以外 → `{ type: 'solid', pt: pt(width), color }`。順序は **上右下左**（テキスト枠の `margin` と違う。実測）。`margin` は上右下左の pt。**上の値が 1 未満だと 4 辺ともインチ扱いになる**（PptxGenJS の `cellMargin[0] >= 1` の分岐）ので、上は 1 pt に切り上げる。空白の `hMerge/vMerge` は PptxGenJS が作る |
+| table | `addTable(rows, { x y w, colW: EMU[], rowH: EMU[] })`。表の高さは `rowH` の和で決まるので、寄せた枠（`box.h`）より高いときは各 `rowH` を比例で縮める。`headerRows` は**渡さない**（PptxGenJS に `<a:tblPr firstRow>` を出す口が無い。見出し行は Capture の太さ・塗りで表す。実測）。セルは `{ text: TextProps[], options: { colspan, rowspan, fill, align, valign, border, margin } }`。`border` は **4 辺必ず埋める**（未指定の辺は PptxGenJS が `DEF_CELL_BORDER`（solid / 666666 / 1 pt）で補うので、線の無い辺を明示しないと罫線が増える。`undefined` があっても落ちはしない。実測）: `width: 0` → `{ type: 'none' }`、それ以外 → `{ type: 'solid', pt: pt(width), color }`。順序は **上右下左**（テキスト枠の `margin` と違う。実測）。`margin` は上右下左の pt。**上の値が 1 未満だと 4 辺ともインチ扱いになる**（PptxGenJS の `cellMargin[0] >= 1` の分岐）ので、上は 1 pt に切り上げる。空白の `hMerge/vMerge` は PptxGenJS が作る |
 | background | `slide.background = { color: backgroundColor }`。§5.5 の背景画像があれば `{ data }` |
 
 `dash` の変換（Capture の `'dot'` → PptxGenJS の `'sysDot'`、他はそのまま）は、テキスト枠・図形・線で共通に `units.ts` の `toDashType()` を使う。
@@ -348,7 +362,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 `options.data.slides[i].note`（生 Markdown）を `addNotes` に渡す。前処理は 3 つだけ: `[click]` `[click:N]` を消す、行頭の `- ` `* ` を `• ` に、`**` `_` `` ` `` の記号をそのまま残す。
 後処理 5 が行ごとに `<a:p>` に割る。
 - 得るもの: Markdown の変換器を Node 側に持ち込まない。
-- 失うもの: ノートの太字やリンクは記号のまま見える。
+- 失うもの: ノートの太字やリンクは記号のまま見える。ノートの run は PptxGenJS が `lang="en-US"` で出し、`--lang` は効かない（`addNotes` に lang の口が無い。実測）。校正の言語を合わせたければ後処理に足す。
 
 ### 4.5 図形の名前
 
@@ -404,6 +418,7 @@ Slidev の `.slidev-layout` は `px-14 py-10`（左右 56 px、上下 40 px）�
 placeholder の位置は**固定**で、実測しない。PptxGenJS は placeholder 指定時にレイアウトの座標を明示した座標より優先する（`pptxgen.cjs.js` L5151-5159）。
 - 得るもの: PowerPoint 側で「レイアウトのリセット」「新しいスライド」が意味を持つ。アウトライン表示とアクセシビリティ検査がタイトルを認識する。
 - 失うもの: Slidev で縦中央に置かれた表紙の位置や、`layoutClass: gap-8` の 2 段組の列幅（左 418 px、右は 506 px から）は、表の固定値（434 / 490）から最大 16 px ずれる。位置を Slidev に合わせる必要が出たら、後処理に「placeholder の `<a:xfrm>` を実測値で上書きする」変換を足す（この設計では入れない）。
+- 失うもの: `body` placeholder は内容領域いっぱい（`default` で 416 px）に固定なので、その下に置いた自由配置の要素（コード枠・表・画像）と枠が重なる。見た目は空欄で問題ないが、PowerPoint で下の要素を掴みにくい。困る場合は選択ウィンドウから選ぶか、Slidev 側で本文を `<PptText>` にして自由配置にする。
 - 表にない `section` `quote` `image-right` `fact` `statement` `intro` `end` などは `blank` で、見出しも本文も自由配置（実測）のテキスト枠になる。
 
 ### 5.3 マスターの定義
@@ -484,9 +499,11 @@ slidev-pptx export [entry=slides.md]
   --report <path>         書き出しの記録の JSON。既定 <output>.report.json
   --no-check              OPC 整合チェックを飛ばす
   --strict                警告が 1 つでもあれば exit 1
-  --keep-server           失敗時にサーバとブラウザを閉じない（調査用）
+  --keep-server           失敗時にサーバとブラウザを閉じない（調査用。成功したときは閉じる）
 slidev-pptx check <file.pptx>    OPC 整合チェックだけ
 ```
+
+引数の検査は Slidev を立てる前に済ませる: `--wait` `--timeout` が数値でない、`--range` が `N` / `N-M` をコンマで並べた形でない（`N ≥ 1`、`M ≥ N`）なら exit 2。entry が無ければ exit 1（引数の綴りは合っているので 2 ではない）。
 
 `package.json` の scripts:
 
@@ -524,11 +541,16 @@ interface Report {
   slides: number; native: number; replaced: number
   replacements: { slide: number; elementId: string; name: string; reason: ImageElement['reason']; selector: string; width: number; height: number }[]
   warnings: (Warning & { slide: number; name?: string })[]
-  dropped: Record<string, number>          // 規則として捨てたものの件数（'code-highlight' 'blockquote-border' 'transition' 'background-crop'）。警告にはしない
+  dropped: Record<string, number>          // 規則として捨てたものの件数。警告にはしない（下の一覧）
   zoom: Record<number, number>             // zoom を使ったスライド
+  slideMap: Record<number, number>         // PPTX の中の番号（slideN.xml）→ 元のスライド番号。--range で絞ると 2 つがずれる
   check: CheckResult[]                     // §3.4。`src/types.ts` の { rule, part, message, level: 'error' | 'warn' }
 }
 ```
+
+`dropped` のキー: `code-highlight`（コードの色付け）、`blockquote-border`（引用の左線）、`transition`（デッキで 1）、`background-crop`（背景画像の切り取り。§5.5）、`console-noise`（Slidev 52.19 + floating-vue の既知の雑音 "Failed to patch FloatingVue"。ブラウザの console.error から除いた件数。描画には影響しない）。
+
+`--range` で絞ったときの番号: 後処理（図形名 `ctx.shapeNames`、縮小率 `ctx.autofit`）は PPTX の番号で引き、`warnings` / `replacements` の `slide` は元の番号のまま。人は `slideMap` で突き合わせる。標準出力では 1 行目の直後に `slide numbers (pptx → source): 1→2, 2→5` の 1 行を出す（ずれが無ければ出さない）。
 
 - 得るもの: 何が画像になり、何を出せなかったかを人が確かめられる。CI では JSON を見て `replaced` の増加を検知できる。
 - 失うもの: 記録の形が増えるたびに README と受入テストを直す。`Report` の型を 1 か所に置き、JSON はその型をそのまま出す。
@@ -547,12 +569,20 @@ interface Report {
 | `W-OFFSLIDE` | スライドの外に出た要素を内側に寄せた |
 | `W-IMAGE` | 画像を取得できず灰色の矩形にした |
 | `W-DARK` | ダークテーマ固定のデッキを測った色のまま出した |
-| `W-TRANSITION` | `transition` を捨てた（デッキで 1 回） |
-| `W-HIDDEN` | 表示されていない要素を飛ばした（`display:none` 以外の理由: キャンバス外、opacity 0） |
+| `W-HIDDEN` | 表示されていない要素を飛ばした（`display:none` 以外の理由: キャンバス外、opacity 0、寄せた結果 w か h が 0 以下） |
+| `W-LINK` | リンクを外した。2 つの場合: 相対パスや数字でないアンカー（開発サーバの URL に解決されて PPTX に残るため。ppt-components.md §3.4）／ `--range` の範囲外のスライドへの内部リンク（PptxGenJS の `hyperlink.slide` は PPTX の中の順番で、外さないと rels が実在しない `slideN.xml` を指して C4 で止まる。実測） |
+| `W-INLINE` | 段落の中の `svg` `img` `table` `pre` `.katex-display` など、枠の単位でしか置き換えられないものを無視した（ppt-components.md §2.2 の 11） |
+| `W-RENDER` | 描画の失敗。3 つの場合: Slidev がスライドの描画に失敗している（収集器がエラー表示の要素を見つけた。そのスライドの番号）／ ブラウザの `console.error` か `pageerror`（slide 0）／ UnoCSS のクラスが効かないまま測った（§1.2。slide 0） |
 
 「規則として捨てるもの」（コードの色付け、引用の左線、`transition`、背景画像の切り取り）は警告にしない。
 - 得るもの: 毎回出る雑音を消し、対処できる警告だけが残る。
 - 失うもの: 利用者は色付けや縦線が出なかったことに警告では気付けない。代わりに `Report.dropped` に件数を出し、標準出力の 1 行目にも載せる。
+
+`transition` の扱い（決定）: **`dropped['transition']` だけ**に出し、警告 `W-TRANSITION` は出さない。設計の初版は表に `W-TRANSITION` を挙げつつ本文で「警告にしない」と書いていて矛盾し、実装 i0001-04 は両方出している。
+- 決める理由: `transition` は Slidev のデッキの大半に付いていて対処のしようが無い（PowerPoint に出す手段が無い）。警告にすると `--strict` が `transition` のあるデッキで必ず赤になり、`--strict` を CI で使えない。「対処できる警告だけが残る」の方針に従う。
+- 得るもの: `--strict` が使える。警告の一覧が対処できるものだけになる。
+- 失うもの: 画面切り替えが消えたことは `dropped` の件数（標準出力の 1 行目）でしか分からない。
+- 実装への影響: `W-TRANSITION` を出している 1 行（`convert.ts`）と、それを期待する検査（`tests/e2e/export.test.ts`、`tests/cli/export.test.ts` の `--strict` の検査は別の警告で組み直す）、README の「`--strict` は `transition` で必ず赤」の注意書きを直す。次の実装の子チケットで行う。
 
 ---
 
@@ -599,13 +629,22 @@ packages/slidev-addon-pptx/
 
 ## 11. 要確認（実装・受入テストで最初に潰す）
 
+実装 i0001-04 と受入テスト i0001-03 で出た答え（2026-09-13）:
+
 1. `@xmldom/xmldom` の parse → serialize が PptxGenJS の XML を同値のまま戻すか（名前空間宣言、空要素、`xml:space`）。
-2. コードブロックの行頭の空白が `<a:t>` で保たれるか（PptxGenJS のエスケープと PowerPoint の表示）。
-3. 後処理 2 で消した placeholder のスライドを PowerPoint で開いたとき「修復」が出ないか（Windows 実機）。
-4. `getComputedStyle` を run ごとに呼ぶコスト（50 枚のデッキで数秒以内か）。
-5. `locator.screenshot({ omitBackground: true })` が祖先（`.print-slide-container` の `bg-main`）の塗りまで透明にするか。しないなら、撮影の間だけ祖先の背景を透明にする（収集器が `data-ppt-capturing` を付け、CSS で `background: transparent !important`）。
-6. `_slideObjects` の順 = `<p:spTree>` の順、自動追加 placeholder は末尾、が版を上げても保たれるか（§4.5 の前提）。1 スライド（title / 自由配置 / 表 / 自動追加 body）では確認済み。placeholder が複数・表が複数・画像と図形が混ざるときは未確認で、受入テストに入れる。
-7. `margin` の `[l, r, b, t]` が版を上げて直っていないか（§4.2）。
+   → **バイト列は同じにならない**（空要素が `<x/>` に畳まれ、属性の改行が詰まり、テキストの CRLF が LF になる）。DOM としては等価で、2 回目以降は冪等。「等価」の定義（要素名・属性の集合・テキストが再帰的に同じ。空白だけのテキストノード・コメント・XML 宣言は見ない）は `tests/patch/pipeline.test.ts` にある。§3.1 の「同値」はこの意味に読み替える。
+2. コードブロックの行頭の空白が `<a:t>` で保たれるか。
+   → **保たれる**（`"  return a"` が生成と e2e の両方で一致）。
+3. 後処理 2 で消した placeholder のスライドを PowerPoint で開いたとき「修復」が出ないか。
+   → **出ない**。利用者が Windows の PowerPoint で `slides.md` の書き出し 13 枚を開き、「修復」は出ず、編集もできた（2026-09-13）。
+4. `getComputedStyle` を run ごとに呼ぶコスト。
+   → 12 枚のデッキで `page.evaluate(collect)` は体感 1 秒未満。50 枚での別計測はしていない。
+5. `locator.screenshot({ omitBackground: true })` が祖先の塗りまで透明にするか。
+   → **未確認**。置き換え画像は撮れていて PowerPoint でも開ける（3 と同じ確認）が、`plain.md` も `slides.md` も置き換え要素が白背景の上にあるため、透けているかは見分けが付かない。色付きの箱の上に数式を置くデッキで確かめる。
+6. `_slideObjects` の順 = `<p:spTree>` の順、自動追加 placeholder は末尾、が保たれるか。
+   → 表・画像・図形が混ざるスライドでも**成立**（`tests/build/convert.test.ts` の「spTree の図形数」）。版を上げたら再確認。
+7. `margin` の `[l, r, b, t]` が版を上げて直っていないか。
+   → 4.0.1 では `[l, r, b, t]` のまま（`tests/fixtures/gen-pptx.mjs` の 4 条件の 1 つ）。
 
 答えが出たもの（この設計を書く過程の実測）: `fit: 'shrink'` + placeholder で `<a:normAutofit/>` は出る。表の `border` 配列で下線だけ出せる。
 
