@@ -25,7 +25,8 @@ export async function startSlidev(entry: string): Promise<Running> {
   const options = await resolveOptions({ entry }, 'export')
   const server = await createServer(options, { server: { port: 0 } })
   await server.listen()
-  process.env.NODE_ENV = prev
+  if (prev === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = prev
   const addr = server.httpServer?.address()
   const port = typeof addr === 'object' && addr ? addr.port : Number(server.config.server.port)
   return { port, base: `http://localhost:${port}`, close: () => server.close() }
@@ -66,19 +67,31 @@ export async function openPrint(browser: Browser, base: string, opts: { range?: 
   await page.waitForSelector('.slidev-slide-loading', { state: 'detached', timeout: 30_000 }).catch(() => {})
   await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-waitfor]')).every((el) => el.querySelector(el.getAttribute('data-waitfor')!)), null, { timeout: 30_000 }).catch(() => {})
   await page.waitForFunction(() => Array.from(document.querySelectorAll('.mermaid')).every((el) => (el.shadowRoot ?? el).querySelector('svg')), null, { timeout: 30_000 }).catch(() => {})
+  await page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 30_000 }).catch(() => {})
   await page.waitForLoadState('networkidle')
   // UnoCSS は dev では後から HMR で CSS を注入し、来ないこともある（同じデッキで run ごとに違う）。
   // デッキ由来のクラスが効いたことを番人にして待つ。来なければ 30 秒で落とし、黙って誤った値を測らない
   //（設計 §1.2 の待機列には無い。README に記載）
-  if (opts.ready) {
-    await page.waitForFunction(
-      ({ selector, prop, value }) => {
-        const el = document.querySelector(selector)
-        return !!el && (getComputedStyle(el) as unknown as Record<string, string>)[prop] === value
-      },
-      opts.ready,
-      { timeout: 30_000 },
-    )
+  const ready = opts.ready
+  if (ready) {
+    // 最初の読み込みでは UnoCSS がデッキのクラスを生成しないことがある。再読み込みで効く（実測）ので、1 回だけやり直す
+    const check = () =>
+      page.waitForFunction(
+        ({ selector, prop, value }) => {
+          const el = document.querySelector(selector)
+          return !!el && (getComputedStyle(el) as unknown as Record<string, string>)[prop] === value
+        },
+        ready,
+        { timeout: 15_000 },
+      )
+    try {
+      await check()
+    } catch {
+      await page.reload({ waitUntil: 'networkidle' })
+      await page.waitForSelector('[data-slidev-no]')
+      await page.waitForFunction(() => Array.from(document.querySelectorAll('.mermaid')).every((el) => (el.shadowRoot ?? el).querySelector('svg')), null, { timeout: 30_000 }).catch(() => {})
+      await check()
+    }
   }
   // さらに <style> の合計長が 2 回続けて（1 秒）動かないことを確かめる
   let last = -1

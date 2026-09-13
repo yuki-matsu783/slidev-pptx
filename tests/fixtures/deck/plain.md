@@ -187,3 +187,21 @@ zoom: 0.8
 <div style="position:absolute; left:300px; top:380px; width:300px; height:40px; overflow:hidden; background:#eeeeee">
   溢れる本文 1 行目<br>2 行目<br>3 行目<br>4 行目<br>5 行目<br>6 行目（W-OVERFLOW）
 </div>
+
+---
+layout: two-cols-header
+---
+
+## 共通の見出し（col-header）
+
+::left::
+
+左の文と段落の中の <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#f00"/></svg> インライン SVG（W-INLINE）
+
+::right::
+
+右の文と <a href="./relative.md">相対リンク（W-LINK）</a>
+
+::bottom::
+
+下の文（col-bottom）

@@ -62,9 +62,9 @@ describe('collect: PPT 部品', () => {
   it('export="image" の部品は画像への置き換え（explicit）', () => {
     expect(els().some((e) => e.kind === 'image' && (e as ImageElement).reason === 'explicit')).toBe(true)
   })
-  it('部品の入れ子は W-NESTED-PPT、PptText の中の表は W-PPT-CONTENT', () => {
+  it('部品の入れ子は W-NESTED-PPT、PptText の中の表は W-PPT-CONTENT（PptShape 自身の SVG では鳴らない）', () => {
     const codes = capture.slides[0].warnings.map((w) => w.code)
-    expect(codes).toContain('W-NESTED-PPT')
-    expect(codes).toContain('W-PPT-CONTENT')
+    expect(codes.filter((c) => c === 'W-NESTED-PPT')).toHaveLength(1)
+    expect(codes.filter((c) => c === 'W-PPT-CONTENT')).toHaveLength(1)
   })
 })

@@ -287,6 +287,30 @@ describe('collect: zoom と はみ出し（§2.3、§2.2 の 1）', () => {
   })
 })
 
+describe('collect: two-cols-header と段落の中の置換対象', () => {
+  it('col-header と col-bottom は根の領域として歩き、col-left / col-right は副領域', () => {
+    const s = slide(S.twoColsHeader)
+    const all = texts(s).map(flat).join('\n')
+    expect(all).toContain('共通の見出し')
+    expect(all).toContain('左の文')
+    expect(all).toContain('右の文')
+    expect(all).toContain('下の文')
+    expect(texts(s)[0].roleHint).toBe('title')
+    expect(texts(s).some((t) => t.roleHint === 'body2' && flat(t).includes('右の文'))).toBe(true)
+  })
+  it('段落の中の svg は枠の単位で置き換えられないので落として W-INLINE', () => {
+    const s = slide(S.twoColsHeader)
+    expect(s.warnings.some((w) => w.code === 'W-INLINE')).toBe(true)
+    expect(images(s)).toHaveLength(0)
+  })
+  it('相対リンクは PPTX に持ち込めないので外して W-LINK', () => {
+    const s = slide(S.twoColsHeader)
+    expect(s.warnings.some((w) => w.code === 'W-LINK')).toBe(true)
+    const runs = texts(s).flatMap((t) => t.paragraphs.flatMap((p) => p.runs))
+    expect(runs.find((r) => r.text.includes('相対リンク'))?.link).toBeUndefined()
+  })
+})
+
 describe('collect: Slidev の UI は無警告で飛ばす（§2.2 の 0）', () => {
   it('コードのコピーボタンが画像にも W-HIDDEN にもならない', () => {
     const s = slide(S.twoCols)

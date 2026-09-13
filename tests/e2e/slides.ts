@@ -14,6 +14,7 @@ export const S = {
   coverBg: 10,
   zoom: 11,
   offslide: 12,
+  twoColsHeader: 13,
 } as const
 
-export const SLIDE_COUNT = 12
+export const SLIDE_COUNT = 13

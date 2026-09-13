@@ -96,7 +96,13 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - native-export.md §4.1: 線（`hr` と `PptShape type="line"`）は端点をキャンバスの中に寄せる。C9 は負の `cx cy x y` を error にする（PptxGenJS に負のインチを渡すと `cx="-113758675200"` のような値が出る。実測）
 - native-export.md §4.2: 同じ `roleHint` の枠が 2 つあると `<p:ph idx>` が重複して C12 で落ちる。2 つ目以降は自由配置にして `W-LAYOUT`
 - ppt-components.md §1.3: `PptShape` の `align` / `valign` の既定は `center` / `middle`（設計表の「PptText と同じ」より PowerPoint 流が妥当）。`padding` prop（既定 `[0, 8, 0, 8]` px）を足し、図形の中の文字の余白を PPTX の inset に写す。SVG で描く図形の形は PowerPoint の preset の既定 adj とは別物（近似）。`type="line"` の slot は描かない
-- ppt-components.md §1.5: `PptTable` の `header: false` は slot の Markdown 表の `thead` を消せない（収集器が `opts.header` を見る）
+- ppt-components.md §1.5: `PptTable` の `header: false` は slot の Markdown 表の `thead` を消せない（`headerRows` は常に `thead > tr` の数で、収集器は `opts.header` を読まない）
+- ppt-components.md §1: PPT 部品と `zoom` の組み合わせは未定義（`data-ppt-box` / `padding` / `radius` は props の生 px、実測は zoom 済み）
+- native-export.md §5.2: placeholder の固定位置は、その下の自由配置の要素（コード枠・表・画像）と重なる。見た目は空欄だが PowerPoint で下の要素を掴みにくい
+- native-export.md §8.2: `W-LINK` は 2 つの意味を持つ（相対リンク・数字でないアンカーを外した / `--range` の範囲外のスライドへのリンクを外した）。`W-RENDER` は 3 つ（Slidev の描画エラーの要素、ブラウザの console.error / pageerror、UnoCSS のクラスが効かないまま測った）
+- native-export.md §8.1: `Report.slideMap`（PPTX の番号 → 元の番号）を足す。後処理（図形名・縮小率）は PPTX の番号、warnings / replacements は元の番号
+- native-export.md §3.3: 縮小率は 2 条件（Slidev で既に溢れている / 出す枠より高い）の不足率の大きいほうを採り、5% を超えて溢れるときだけ書く（計測環境と PowerPoint のフォント差で数 % は動くため）
+- native-export.md §1.2: UnoCSS の番人。DOM にあるデッキ由来のクラスに CSS 規則が 1 つも無ければ再読み込み（最大 3 回）。それでも来なければ `W-RENDER`。`page.on('console')` の "Failed to patch FloatingVue"（Slidev 52.19 の既知の雑音）は `dropped['console-noise']` に件数を出す
 - native-export.md §8.2: 警告コード `W-INLINE`（段落の中の svg / img / table など、枠の単位でしか置き換えられないものを落とした）と `W-RENDER`（Slidev がスライドの描画に失敗している。ブラウザの console.error / pageerror）を足す
 - ppt-components.md §3.4: 空白の畳み込みは CSS と同じ `[ \t\r\n\f]` だけ（全角空白 U+3000 と NBSP は畳まない）。文字色が読めない形式（oklch、color()）や `transparent` のときは黒にして `W-CSS`（白にしない）。`<u>` が `<a>` の中にあれば下線は本物
 - ppt-components.md §2.1: 根が `.slidev-layout` のときも根自身の `background-image`（`layout: image`）と背景色（`layout: end`、`layoutClass`）を読む。`two-cols-header` の `.col-header` / `.col-bottom` は根の領域として歩く（`.col-left` / `.col-right` だけ副領域）

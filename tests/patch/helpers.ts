@@ -7,7 +7,7 @@ import { readFixturePptx } from '../helpers/pptx'
 export function emptyReport(): Report {
   return {
     output: 'x.pptx', generatedAt: '', slidev: '', pptxgenjs: '',
-    slides: 0, native: 0, replaced: 0, replacements: [], warnings: [], dropped: {}, zoom: {}, check: [],
+    slides: 0, native: 0, replaced: 0, replacements: [], warnings: [], dropped: {}, zoom: {}, slideMap: {}, check: [],
   }
 }
 

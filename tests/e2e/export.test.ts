@@ -68,7 +68,9 @@ describe('exportPptx: plain.md', () => {
 
   it('警告コード（§8.2）: plain.md で出せるものが全部出る', () => {
     const codes = new Set(report.warnings.map((w) => w.code))
-    for (const c of ['W-CSS', 'W-MATH-INLINE', 'W-LI-BLOCK', 'W-LAYOUT', 'W-OVERFLOW', 'W-OFFSLIDE', 'W-IMAGE', 'W-HIDDEN', 'W-TRANSITION']) expect(codes.has(c), c).toBe(true)
+    for (const c of ['W-CSS', 'W-MATH-INLINE', 'W-LI-BLOCK', 'W-LAYOUT', 'W-OVERFLOW', 'W-OFFSLIDE', 'W-IMAGE', 'W-HIDDEN', 'W-TRANSITION', 'W-INLINE', 'W-LINK']) expect(codes.has(c), c).toBe(true)
+    // UnoCSS が効かないまま測ったときの W-RENDER は出ていない（番人が効いている）
+    expect(report.warnings.some((w) => w.code === 'W-RENDER' && /UnoCSS/.test(w.message))).toBe(false)
     expect(report.warnings.filter((w) => w.code === 'W-TRANSITION')).toHaveLength(1)
     expect(report.warnings.some((w) => w.code === 'W-IMAGE' && w.slide === S.boxes)).toBe(true)
     expect(report.warnings.some((w) => w.code === 'W-OVERFLOW' && w.slide === S.offslide)).toBe(true)
@@ -125,12 +127,18 @@ describe('exportPptx: plain.md', () => {
     expect(texts).toEqual(['ノート 1 行目', 'ノート 2 行目', '• 箇条書き'])
   })
 
-  it('--range は Slidev の range と同じ綴りで、枚数が絞られる', async () => {
+  it('--range は Slidev の range と同じ綴りで、枚数が絞られる。後処理は PPTX の番号で引く（図形名が付き直り、slideMap で元番号と対応する）', async () => {
     const out = join(tmp(), 'range.pptx')
     const r = await exportPptx({ entry: PLAIN, output: out, range: '1-2,4' })
     expect(r.slides).toBe(3)
+    expect(r.slideMap).toEqual({ 1: 1, 2: 2, 3: 4 })
     const q = await openPptx(readFileSync(out))
     expect(q.list().filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f))).toHaveLength(3)
+    // 3 枚目（元の 4 枚目）の図形名が PptxGenJS の既定（Text 0）のまま残っていない
+    const doc = await q.xml('ppt/slides/slide3.xml')
+    const names = els(doc, 'p', 'cNvPr').map((c) => c.getAttribute('name'))
+    expect(names).not.toContain('Text 0')
+    expect(names).toContain('Title')
   }, 180_000)
 
   it('check: false なら OPC 検査を飛ばし、report.check は空', async () => {
