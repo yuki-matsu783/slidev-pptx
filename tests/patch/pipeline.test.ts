@@ -56,7 +56,8 @@ describe('patch/index: postProcess', () => {
   it('バイナリ（media）は byte 単位で同じ', async () => {
     const before = await JSZip.loadAsync(readFixturePptx())
     const after = await JSZip.loadAsync(await postProcess(readFixturePptx(), [], contextFor()))
-    const media = Object.keys(before.files).filter((f) => f.startsWith('ppt/media/'))
+    // jszip の files にはディレクトリ項目（'ppt/media/'）も入る。file() はそれを返さないので除く
+    const media = Object.keys(before.files).filter((f) => f.startsWith('ppt/media/') && !before.files[f].dir)
     expect(media.length).toBeGreaterThan(0)
     for (const m of media) {
       expect(Buffer.from(await after.file(m)!.async('uint8array'))).toEqual(Buffer.from(await before.file(m)!.async('uint8array')))

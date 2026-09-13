@@ -10,6 +10,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "allowJs": true,
+    "allowImportingTsExtensions": true,
     "types": ["node", "vitest/globals"]
   },
   "include": ["./**/*.ts", "./**/*.mjs", "../packages/slidev-addon-pptx/src/**/*.ts"],
