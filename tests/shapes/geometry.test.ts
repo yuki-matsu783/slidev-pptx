@@ -50,8 +50,13 @@ describe('shapes/geometry: 名前と引数', () => {
 describe('shapes/geometry: 187 種すべて', () => {
   const sizes: [number, number][] = [[200, 100], [100, 200], [150, 150], [0, 0], [0, 100]]
   for (const name of PRESET_NAMES) {
-    it(`${name} は 3 通りの縦横比と大きさ 0 で有限の値になる`, () => {
+    it(`${name} は 3 通りの縦横比と大きさ 0 で有限の値になり、文字の枠は l≤r かつ t≤b`, () => {
       for (const [w, h] of sizes) expectFinite(name, w, h)
+      for (const [w, h] of sizes.slice(0, 3)) {
+        const { l, t, r, b } = evalPreset(name, w, h).textRect
+        expect(l).toBeLessThanOrEqual(r)
+        expect(t).toBeLessThanOrEqual(b)
+      }
     })
   }
 })
@@ -283,6 +288,14 @@ describe('shapes/geometry: 回帰（レビューの指摘）', () => {
     // stAng = 0 → 始点 (hc + wd2, vc) = (200,50)。swAng = 21599999（360° 未満）を 2 つに割る → ほぼ (0,50) を経て (200,50) へ
     // 1 つの A だと始点と終点が丸めで重なり、SVG は円弧を描かない
     expect(evalPreset('arc', 200, 100, { adj1: 0, adj2: 21599999 }).paths[1].d).toBe('M200 50 A100 50 0 0 1 0 50 A100 50 0 0 1 200 50')
+  })
+
+  it('pie の文字の枠は定義の誤記（t="ir" r="it"）を l≤r、t≤b に揃える', () => {
+    // 200×100: idx = cos wd2 45° = 70.711、idy = sin hd2 45° = 35.355
+    // il = hc − idx = 29.289、ir = hc + idx = 170.711、it = vc − idy = 14.645、ib = vc + idy = 85.355
+    // rect は l=il t=ir r=it b=ib = (29.289, 170.711, 14.645, 85.355) → 揃えて l=14.645 t=85.355 r=29.289 b=170.711
+    const { l, t, r, b } = evalPreset('pie', 200, 100).textRect
+    expectPoints([l, t, r, b], [14.645, 85.355, 29.289, 170.711])
   })
 
   it('arc の adj1 = adj2 は 1 周（swAng = ?: sw11 sw11 sw12 で sw11 = 0 は 0 より大きくない）', () => {
