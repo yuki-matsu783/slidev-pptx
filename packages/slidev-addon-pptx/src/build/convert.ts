@@ -15,7 +15,7 @@ import { resolveLayout } from './layout.ts'
 import { defineMasters, masterFor, hasPlaceholder, placeholderBox } from './masters.ts'
 import type { LayoutName } from './masters.ts'
 import { isPreset } from '../shapes/geometry.ts'
-import { PRESETS } from '../shapes/presets.ts'
+import { normalizeAdjust, radiusToAdj } from '../shapes/adjust.ts'
 
 export interface Asset {
   data: string
@@ -217,7 +217,7 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
           addShape(pptx, slide, e, box, name, lang, canvas, sc, pptxNo, ctx)
           break
         case 'line':
-          addLine(pptx, slide, e, name, canvas)
+          addLine(pptx, slide, e, name, canvas, (message) => ctx.report.warnings.push({ code: 'W-SHAPE', elementId: e.id, slide: sc.no, name, message }))
           break
         case 'image':
           addImage(pptx, slide, e, box, name, canvas, sc, opts, report)
@@ -395,8 +395,8 @@ function addShape(
   else common.line = { color: '000000', width: 0, transparency: 100 }
   if (e.arrow?.head) common.line.beginArrowType = arrow(e.arrow.head)
   if (e.arrow?.tail) common.line.endArrowType = arrow(e.arrow.tail)
-  const unknownArrows = [e.arrow?.head, e.arrow?.tail].filter((v): v is string => !!v && !ARROW_TYPES.includes(v))
-  if (unknownArrows.length) shapeWarn(`矢じり ${unknownArrows.join(', ')} は PowerPoint に無いので arrow にした`)
+  const badArrows = unknownArrowMessage(e.arrow?.head, e.arrow?.tail)
+  if (badArrows) shapeWarn(badArrows)
   // roundRect の角の半径は rectRadius を使わず、shapeAdjust が adj に換算して後処理が書く
   if (e.rotate) common.rotate = e.rotate
   if (e.flipH) common.flipH = true
@@ -415,40 +415,29 @@ function addShape(
   }
 }
 
-/** a:gd の fmla="val N" の N（ST_Coordinate32 の範囲。外は PowerPoint が修復に掛ける） */
-const ADJ_MIN = -2147483648
-const ADJ_MAX = 2147483647
-/** roundRect の定義の `pin 0 adj 50000` */
-const ROUND_RECT_ADJ_MAX = 50000
-
 /**
  * 調整値を定義（prst の avLst）の名前に絞り、整数に丸める。PptxGenJS は avLst を rectRadius と angleRange でしか
  * 書けないので、ここで ctx.adjust に積み、後処理 applyShapeAdjust が <a:avLst> を書き直す。
- * 定義に無い名前、数でない値、丸めて 32 bit 整数の範囲外の値は捨てて W-SHAPE。残りが無ければ undefined。
+ * 絞り方は PptShape.vue と同じ normalizeAdjust（定義に無い名前、数でない値、丸めて 32 bit 整数の範囲外の値は捨てる）で、捨てたら W-SHAPE。
+ * 残りが無ければ undefined。
  * 調整値は枠に対する比率なので、スライドからはみ出して枠を縮めた図形では形が Slidev の見た目とずれる（直していない）
  */
 function shapeAdjust(e: ShapeElement, box: Box, warn: (message: string) => void): Record<string, number> | undefined {
-  const known = new Set(PRESETS[e.shape].av.map(([n]) => n))
-  const out: Record<string, number> = {}
-  const dropped: string[] = []
-  for (const [k, v] of Object.entries(e.adj ?? {})) {
-    const n = typeof v === 'number' ? Math.round(v) : NaN
-    if (known.has(k) && n >= ADJ_MIN && n <= ADJ_MAX) out[k] = n
-    else dropped.push(k)
-  }
+  const { adj: out, dropped } = normalizeAdjust(e.shape, e.adj)
   if (dropped.length) warn(`図形 "${e.shape}" の調整値 ${dropped.join(', ')} は定義に無いか、数でないか、範囲外なので捨てた`)
-  // roundRect の radius（px）は adj に換算する。PptShape.vue と同じ式（角の半径 = ss × adj / 100000）で、adj.adj があればそちらが勝つ。
+  // roundRect の radius（px）は adj に換算する。PptShape.vue と同じ radiusToAdj で、adj.adj が残ればそちらが勝つ。
   // PptxGenJS の rectRadius は 0 を捨てて（if (rectRadius)）PowerPoint の既定の角丸になるので使わない。
-  // ss は寄せた後の枠で取る（px の半径を保つ）。範囲は定義の pin に合わせる
-  const radius = e.frame.radius
-  if (e.shape === 'roundRect' && typeof radius === 'number' && Number.isFinite(radius) && out.adj === undefined) {
-    const ss = Math.min(box.w, box.h)
-    if (ss > 0) out.adj = Math.max(0, Math.min(ROUND_RECT_ADJ_MAX, Math.round((radius / ss) * 100000)))
+  // ss は寄せた後の枠で取る（px の半径を保つ）
+  if (e.shape === 'roundRect' && out.adj === undefined) {
+    const adj = radiusToAdj(e.frame.radius, box.w, box.h)
+    if (adj !== undefined) out.adj = adj
   }
   return Object.keys(out).length ? out : undefined
 }
 
-function addLine(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: LineElement, name: string, canvas: Canvas): void {
+function addLine(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: LineElement, name: string, canvas: Canvas, warn: (message: string) => void): void {
+  const badArrows = unknownArrowMessage(e.line.head, e.line.tail)
+  if (badArrows) warn(badArrows)
   // 端点は build の前処理でキャンバスの中に寄せてある（負の EMU を出さない）
   const x = Math.min(e.from.x, e.to.x)
   const y = Math.min(e.from.y, e.to.y)
@@ -465,6 +454,12 @@ const ARROW_TYPES = ['none', 'arrow', 'diamond', 'oval', 'stealth', 'triangle']
 
 function arrow(v: string): PptxGenJS.ShapeLineProps['endArrowType'] {
   return (ARROW_TYPES.includes(v) ? v : 'arrow') as PptxGenJS.ShapeLineProps['endArrowType']
+}
+
+/** 知らない矢じりの W-SHAPE の文面（図形と線で同じ）。知らない値が無ければ undefined */
+function unknownArrowMessage(...values: (string | undefined)[]): string | undefined {
+  const bad = values.filter((v): v is string => !!v && !ARROW_TYPES.includes(v))
+  return bad.length ? `矢じり ${bad.join(', ')} は PowerPoint に無いので arrow にした` : undefined
 }
 
 // ---------------------------------------------------------------- 画像
