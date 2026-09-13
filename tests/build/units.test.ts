@@ -46,7 +46,7 @@ describe('build/units: pt(px) と inch(px)', () => {
 })
 
 describe('build/units: clampBox（スライドの外に掛かる要素を内側に寄せる）', () => {
-  it('内側の箱はそのまま、移動量 0、落とさない', () => {
+  it('内側の箱はそのまま、移動量 0、除外しない', () => {
     const r = clampBox({ x: 10, y: 10, w: 100, h: 50 }, canvas)
     expect(r).toEqual({ box: { x: 10, y: 10, w: 100, h: 50 }, shift: 0, dropped: false })
   })
@@ -66,7 +66,7 @@ describe('build/units: clampBox（スライドの外に掛かる要素を内側�
     expect(r.box).toEqual({ x: 900, y: 500, w: 80, h: 52 })
     expect(r.shift).toBe(120)
   })
-  it('寄せた結果 w か h が 0 以下なら落とす', () => {
+  it('寄せた結果 w か h が 0 以下なら除外する', () => {
     expect(clampBox({ x: -300, y: 400, w: 100, h: 40 }, canvas).dropped).toBe(true)
     expect(clampBox({ x: 10, y: 600, w: 100, h: 40 }, canvas).dropped).toBe(true)
   })

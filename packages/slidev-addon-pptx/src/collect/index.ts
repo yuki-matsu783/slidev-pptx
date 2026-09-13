@@ -207,7 +207,7 @@ export function collect(): Capture {
       if (!out.length || out[out.length - 1].breakAfter) out.push({ text: '', ...runStyle(styleEl, false, false) })
       out[out.length - 1].breakAfter = true
     }
-    /** 段落の中に置けないもの（svg / img / canvas など）。画像への置き換えは枠の単位なので、ここでは落として警告 */
+    /** 段落の中に置けないもの（svg / img / canvas など）。画像への置き換えは枠の単位なので、ここでは無視して警告 */
     const isInlineBlocker = (el: globalThis.Element) => {
       const t = tagOf(el)
       return REPLACE_TAGS.has(t) || t === 'IMG' || t === 'TABLE' || t === 'PRE' || el.classList.contains('katex-display') || el.classList.contains('mermaid')
@@ -221,7 +221,7 @@ export function collect(): Capture {
           const text = inCode ? raw : collapse(raw)
           const holder = (node.parentElement ?? parent) as globalThis.Element
           if (blank(text) && !inCode) {
-            // 空白だけのノードは、前の run の文字を変えず、親の書式で独立した run にする（枠の端では trimRuns が落とす）
+            // 空白だけのノードは、前の run の文字を変えず、親の書式で独立した run にする（枠の端では trimRuns が取り除く）
             if (out.length && text.length && !out[out.length - 1].text.endsWith(' ')) out.push({ text: ' ', ...runStyle(parent, inCode, false) })
             continue
           }
@@ -246,7 +246,7 @@ export function collect(): Capture {
         }
         if (cs(el).display === 'none') continue
         if (isInlineBlocker(el)) {
-          warn('W-INLINE', `段落の中の ${tag.toLowerCase()} は出せないので落とした`, id)
+          warn('W-INLINE', `段落の中の ${tag.toLowerCase()} は出せないので無視した`, id)
           continue
         }
         // inline でもブロック（div など）でも、中の inline を続けて拾う
@@ -285,7 +285,7 @@ export function collect(): Capture {
       if (tag === 'UL' || tag === 'OL') return listParagraphs(el, id, 0)
       if (tag === 'PRE') return codeParagraphs(el)
       const runs = trimRuns(collectRuns(el, id, false))
-      return runs.length ? [paragraphOf(el, 'plain', 0, runs)] : [] // 空の <p> は落とす
+      return runs.length ? [paragraphOf(el, 'plain', 0, runs)] : [] // 空の <p> は出さない
     }
     const listParagraphs = (list: globalThis.Element, id: string, level: number): Paragraph[] => {
       const out: Paragraph[] = []
@@ -865,7 +865,7 @@ export function collect(): Capture {
             continue
           }
           if (isInlineBlocker(c)) {
-            warn('W-INLINE', `装飾つきの箱の中の ${t.toLowerCase()} は出せないので落とした`, id)
+            warn('W-INLINE', `装飾つきの箱の中の ${t.toLowerCase()} は出せないので無視した`, id)
             continue
           }
           if (INLINE_TAGS.has(t)) {

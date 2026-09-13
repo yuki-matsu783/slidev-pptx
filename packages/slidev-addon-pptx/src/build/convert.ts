@@ -120,7 +120,7 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
       slide.background = { color: hex(sc.backgroundColor) }
     }
 
-    // 要素の前処理: 自由配置の寄せ・落とし、role の確定
+    // 要素の前処理: 自由配置の寄せ・除外、role の確定
     const roles = new Map<string, RoleHint>()
     const usedRoles = new Set<RoleHint>()
     const boxes = new Map<string, Box>()
@@ -154,7 +154,7 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
         const cy1 = Math.max(0, Math.min(canvas.height, y1))
         const cy2 = Math.max(0, Math.min(canvas.height, y2))
         const shift = Math.max(cx1 - x1, x2 - cx2, cy1 - y1, y2 - cy2)
-        // どちらかの軸で全体がスライドの外なら落とす（水平線が y<0、縦線が x>幅 など）
+        // どちらかの軸で全体がスライドの外なら除外する（水平線が y<0、縦線が x>幅 など）
         if (x2 <= 0 || x1 >= canvas.width || y2 < 0 || y1 > canvas.height || (cx2 - cx1 <= 0 && cy2 - cy1 <= 0)) {
           warn(sc.no, { code: 'W-HIDDEN', elementId: e.id, message: 'スライドの外にあるので飛ばした' })
           continue
@@ -233,7 +233,7 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
     keptTotal += kept.length
   }
 
-  // native = 出せた要素（落としたものは数えない）− 画像への置き換え
+  // native = 出せた要素（除外したものは数えない）− 画像への置き換え
   report.replaced = report.replacements.length
   report.native = keptTotal - report.replaced
   return { pptx, ctx }

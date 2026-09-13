@@ -56,7 +56,7 @@ describe('convert: レイアウトと placeholder（§5.1、§4.2）', () => {
     expect(relTarget(rels[4], relIdOfLayout(rels[4]))).toBe('../slideLayouts/slideLayout2.xml')
     expect(ctx.report.warnings.some((w) => w.code === 'W-LAYOUT' && w.slide === 4)).toBe(true)
   })
-  it('getLayouts() に無い綴り違いは default に落ち、警告は出ない', () => {
+  it('getLayouts() に無い綴り違いは default として扱い、警告は出ない', () => {
     expect(relTarget(rels[5], relIdOfLayout(rels[5]))).toBe('../slideLayouts/slideLayout4.xml')
     expect(textOf(ph(slide[5], 'title')!)).toBe('綴り違い')
     expect(ctx.report.warnings.some((w) => w.slide === 5)).toBe(false)

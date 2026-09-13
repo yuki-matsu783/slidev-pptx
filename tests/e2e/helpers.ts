@@ -70,7 +70,7 @@ export async function openPrint(browser: Browser, base: string, opts: { range?: 
   await page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout: 30_000 }).catch(() => {})
   await page.waitForLoadState('networkidle')
   // UnoCSS は dev では後から HMR で CSS を注入し、来ないこともある（同じデッキで run ごとに違う）。
-  // デッキ由来のクラスが効いたことを確認してから測る。来なければ 30 秒で落とし、黙って誤った値を測らない
+  // デッキ由来のクラスが効いたことを確認してから測る。来なければ 30 秒で打ち切り、黙って誤った値を測らない
   //（設計 §1.2 の待機列には無い。README に記載）
   const ready = opts.ready
   if (ready) {

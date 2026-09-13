@@ -21,7 +21,7 @@ describe('build/layout: resolveLayout（Slidev と同じ順で解く）', () => 
     expect(resolveLayout(1, d, layouts)).toBe('center')
     expect(resolveLayout(0, d, layouts)).toBe('center')
   })
-  it('getLayouts() に無い名前は default に落とす（Slidev が default で描くため）', () => {
+  it('getLayouts() に無い名前は default として扱う（Slidev が default で描くため）', () => {
     expect(resolveLayout(4, data, layouts)).toBe('default')
   })
   it('getLayouts() に無い既定（defaults.layout の綴り違い）も default', () => {

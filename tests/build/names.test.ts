@@ -37,7 +37,7 @@ describe('build/names: assignNames', () => {
     expect(new Set(names).size).toBe(2)
   })
 
-  it('XML に入れられない文字は name から落ちる', () => {
+  it('XML に入れられない文字は name から取り除かれる', () => {
     const els = [el('s1-e1', 'text', `na${String.fromCharCode(1)}me`)]
     expect(assignNames(els, new Map(), false)).toEqual(['name'])
   })

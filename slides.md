@@ -10,7 +10,7 @@ lineNumbers: false
 addons:
   - slidev-addon-pptx
 fonts:
-  # Windows は 游ゴシック / Consolas、Mac は OS 同梱の 游ゴシック体 と Menlo に落ちる（計測の行数を PowerPoint に近づける）
+  # Windows は 游ゴシック / Consolas、Mac は OS 同梱の 游ゴシック体 と Menlo で代用する（計測の行数を PowerPoint に近づける）
   sans: 游ゴシック, 游ゴシック体, YuGothic
   mono: Consolas, Menlo
   local:

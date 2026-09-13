@@ -70,7 +70,7 @@ export async function exportPptx(o: ExportOptions): Promise<Report> {
     page.on('pageerror', (e) => pageErrors.push(String(e.message ?? e)))
     page.on('console', (m) => {
       if (m.type() !== 'error') return
-      // Slidev 52.19 + floating-vue の既知の雑音（"Failed to patch FloatingVue … Popper"）。描画には影響しない。落とした件数は記録に出す
+      // Slidev 52.19 + floating-vue の既知の雑音（"Failed to patch FloatingVue … Popper"）。描画には影響しない。除いた件数は記録に出す
       if (/Failed to patch FloatingVue/.test(m.text())) consoleNoise++
       else pageErrors.push(m.text())
     })

@@ -52,7 +52,7 @@ pnpm export:pptx
 - 待機は Slidev `exportSlides` の `go()` と同じ手順を自前で持つ: `[data-slidev-no]` の出現 → `.slidev-slide-loading` の消滅 → `[data-waitfor]` → iframe / mermaid / monaco の描画 → `networkidle`。`--wait <ms>` で追加待機。
 - viewport は `width: canvasWidth, height: canvasHeight × 枚数`（Slidev と同じ。要素の rect は `.print-slide-container` の rect との差で取るので、スクロール位置に依らない）。
 - `emulateMedia({ colorScheme: 'light' })`。デッキが `colorSchema: dark` を固定していれば警告 `W-DARK` を出し、測れた色のまま出す。
-- headmatter の `transition` は落ちる（PptxGenJS に API が無い）。1 回だけ `W-TRANSITION` を出す。
+- headmatter の `transition` は捨てる（PptxGenJS に API が無い）。1 回だけ `W-TRANSITION` を出す。
 
 ---
 
@@ -174,7 +174,7 @@ interface BorderSide { color: string; width: number }
 interface Warning {
   code: string                  // §8.2 の一覧
   elementId?: string
-  message: string               // 人が読む文。何を落としたか、どうすれば出せるか
+  message: string               // 人が読む文。何を出せなかったか、どうすれば出せるか
 }
 ```
 
@@ -262,7 +262,7 @@ XML は文字列置換ではなく DOM（`@xmldom/xmldom`）で触る。
 | C10 r:* の逆引き | 各パートの `r` 名前空間（relationships）の全属性（`r:id` `r:embed` `r:link`、将来のグラフの `r:dm` など）の値が、そのパートの rels に在る | error |
 | C11 autofit の重複 | `<a:bodyPr>` の子に `normAutofit` `spAutoFit` `noAutofit` が 2 つ以上ない | error |
 | C12 ph idx の一意 | 1 スライド内で `idx` 属性を持つ `<p:ph>` の `idx` が重複しない（`idx` 無しは C8 の扱い） | error |
-| C13 不正文字 | 全テキストノードと全属性値が XML 1.0 で許される文字だけ（`<a:t>` のほか `cNvPr name` `descr` `tooltip` `cSld name` にも利用者の文字列が入る。PptxGenJS は `& < > " '` しかエスケープせず、`@xmldom/xmldom` は制御文字を通すので C1 では止まらない）。生成時に `sanitize.ts` で落とすのが本線で、この検査は保険 | error |
+| C13 不正文字 | 全テキストノードと全属性値が XML 1.0 で許される文字だけ（`<a:t>` のほか `cNvPr name` `descr` `tooltip` `cSld name` にも利用者の文字列が入る。PptxGenJS は `& < > " '` しかエスケープせず、`@xmldom/xmldom` は制御文字を通すので C1 では止まらない）。生成時に `sanitize.ts` で取り除くのが本線で、この検査は保険 | error |
 | C14 pPr の重複 | `<a:p>` 直下の `<a:pPr>` は高々 1 つで、あれば最初の子（後処理 3 の結果を固定する） | error |
 
 出力は `CheckResult[]`（`src/types.ts`。`{ rule, part, message, level: 'error' | 'warn' }`）。error が 1 つでもあれば exit 1。
@@ -289,7 +289,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 
 **座標（x y w h、表の colW rowH）は EMU の整数で渡す。** PptxGenJS は `x y w h` を `getSmartParseNumber`（100 未満ならインチ、**100 以上**なら EMU）で、表の `colW` `rowH` を `inch2Emu`（**100 より大きい**ときだけ EMU。ちょうど 100 は 100 インチになる。実測）で解く。
 - 0 は 0 のまま。1 以上 100 以下は **101** に切り上げる（座標も表も同じ関数で。0.001 インチ未満なので見えない）。
-- **負の値**はインチ扱いになって壊れる（`-5` → −5 インチ）。スライドの外に掛かる要素は**常に**内側に寄せる: x / y が負なら 0 に、右端・下端がスライドを超えていれば w / h を縮める（左端・上端は動かさない）。縮めた結果 w か h が 0 以下（x が −100 で w が 50 など、全体が外にある）なら要素を落として `W-HIDDEN`。
+- **負の値**はインチ扱いになって壊れる（`-5` → −5 インチ）。スライドの外に掛かる要素は**常に**内側に寄せる: x / y が負なら 0 に、右端・下端がスライドを超えていれば w / h を縮める（左端・上端は動かさない）。縮めた結果 w か h が 0 以下（x が −100 で w が 50 など、全体が外にある）なら要素を除外して `W-HIDDEN`。
 - 寄せた量が **5 px 以上**のときだけ `W-OFFSLIDE` を出す。Slidev の `h1 { -ml-[0.05em] }` で x が −2 px になるのは全スライドで起きるので、5 px 未満は寄せるだけで黙る。
 - フォント pt は PptxGenJS が `sz = round(pt × 100)` にする。
 
@@ -304,7 +304,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 | Capture | PptxGenJS | 単位 |
 |---|---|---|
 | `roleHint` があり、§5.1 で解いたレイアウトの対応表（§5.2）に同名の placeholder がある | `placeholder: roleHint`（座標は渡さない。レイアウトの値が勝つ）。**role の確定は Node の仕事**。収集器はレイアウト名も対応表も知らないので、候補（`roleHint`）だけを記録する | |
-| `roleHint` があるが対応表に無い（`blank`、`two-cols` 以外の `body2` など） | 自由配置に落とす。`blank` 以外なら `W-LAYOUT` に理由を添える（綴り違いの placeholder 名を PptxGenJS に渡すと `<p:ph>` の無い枠が左上に出る。実測） | EMU |
+| `roleHint` があるが対応表に無い（`blank`、`two-cols` 以外の `body2` など） | 自由配置にする。`blank` 以外なら `W-LAYOUT` に理由を添える（綴り違いの placeholder 名を PptxGenJS に渡すと `<p:ph>` の無い枠が左上に出る。実測） | EMU |
 | それ以外（自由配置） | `x y w h` | EMU |
 | `rotate` | `rotate` | 度 |
 | `Paragraph.kind: 'bullet'` | `bullet: { characterCode: '25AA' }`（Slidev の square）、`indentLevel: level`。字下げ幅は PptxGenJS の 1 段 342900 EMU（約 27 px）に任せる（Slidev の `li { ml-1.1em pl-0.2em }` ≈ 23 px と近い）。`bullet.indent` は記号と文字の間隔で、字下げではないので使わない | |
@@ -358,7 +358,7 @@ Node 側が、スライドごとに図形を add する順に名前を確定し�
 - `name` prop があればそれ。同じスライドに同名があれば `-2` `-3` を足す。
 - 無ければ、placeholder に入れると確定した枠（§4.2）は固定名 `Title` `Body` `Body 2`。それ以外は `<種類> <要素番号>`（`Text 3`、`Shape 4`、`Image 5`、`Table 6`、`Line 7`、`Replaced 8`。要素番号は `ElementBase.id` の M）。
 - 列より多い図形（書き出し時に自動追加された空 placeholder）は `Placeholder <spTree の位置>`。後処理 2 が消すので通常は残らない。
-- `name` に XML で不正な文字や制御文字があれば、生成時に落とす（`sanitize.ts`。§3.4 C13 は保険）。
+- `name` に XML で不正な文字や制御文字があれば、生成時に取り除く（`sanitize.ts`。§3.4 C13 は保険）。
 - 後処理 1 がこの列で `<p:cNvPr name>` を付け直す。`W-*` の `elementId` と `Report` にはこの名前も出す。
 
 - 得るもの: 名前が PowerPoint の「選択ウィンドウ」でそのまま見え、警告と突き合わせられる。
@@ -372,7 +372,7 @@ Node 側が、スライドごとに図形を add する順に名前を確定し�
 
 Slidev と同じ順に 2 段で解く。
 
-1. Slidev が使うレイアウト名: `frontmatter.layout` → `slides[0].frontmatter.defaults.layout` → 1 枚目なら `cover`、それ以外 `default`。その名前が `await options.utils.getLayouts()` に**無ければ `default`**（Slidev が `default` に落として描くので、こちらも合わせる。`serve-*.mjs` L683-690）。
+1. Slidev が使うレイアウト名: `frontmatter.layout` → `slides[0].frontmatter.defaults.layout` → 1 枚目なら `cover`、それ以外 `default`。その名前が `await options.utils.getLayouts()` に**無ければ `default`**（Slidev が `default` として描くので、こちらも合わせる。`serve-*.mjs` L683-690）。
 2. 対応表: 1 の結果が §5.2 の表に無ければ `blank`（警告 `W-LAYOUT`。これは Node 側の警告なので `Report.warnings` に入る）。
 
 DOM の `.slidev-layout` の class は使わない。`two-cols` の class は `two-columns` で名前が一致せず、`image-right` は内側に `.slidev-layout.default` を持つ（どちらも `client/layouts/` で確認）。
@@ -530,7 +530,7 @@ interface Report {
 }
 ```
 
-- 得るもの: 何が画像になり、何が落ちたかを人が確かめられる。CI では JSON を見て `replaced` の増加を検知できる。
+- 得るもの: 何が画像になり、何を出せなかったかを人が確かめられる。CI では JSON を見て `replaced` の増加を検知できる。
 - 失うもの: 記録の形が増えるたびに README と受入テストを直す。`Report` の型を 1 か所に置き、JSON はその型をそのまま出す。
 
 ### 8.2 警告コード
@@ -542,17 +542,17 @@ interface Report {
 | `W-NESTED-PPT` | PPT 部品の中の PPT 部品を無視した |
 | `W-PPT-CONTENT` | PptText の中の表・画像を無視した |
 | `W-LI-BLOCK` | 箇条書きの中の表・画像・引用を無視した |
-| `W-LAYOUT` | 対応表に無いレイアウトを `blank` にした。または、候補（`roleHint`）の placeholder がそのレイアウトに無く自由配置に落とした |
+| `W-LAYOUT` | 対応表に無いレイアウトを `blank` にした。または、候補（`roleHint`）の placeholder がそのレイアウトに無く自由配置にした |
 | `W-OVERFLOW` | 枠に収まらないので縮小率を書いた |
 | `W-OFFSLIDE` | スライドの外に出た要素を内側に寄せた |
 | `W-IMAGE` | 画像を取得できず灰色の矩形にした |
 | `W-DARK` | ダークテーマ固定のデッキを測った色のまま出した |
-| `W-TRANSITION` | `transition` を落とした（デッキで 1 回） |
+| `W-TRANSITION` | `transition` を捨てた（デッキで 1 回） |
 | `W-HIDDEN` | 表示されていない要素を飛ばした（`display:none` 以外の理由: キャンバス外、opacity 0） |
 
 「規則として捨てるもの」（コードの色付け、引用の左線、`transition`、背景画像の切り取り）は警告にしない。
 - 得るもの: 毎回出る雑音を消し、対処できる警告だけが残る。
-- 失うもの: 利用者は色付けや縦線が落ちたことに警告では気付けない。代わりに `Report.dropped` に件数を出し、標準出力の 1 行目にも載せる。
+- 失うもの: 利用者は色付けや縦線が出なかったことに警告では気付けない。代わりに `Report.dropped` に件数を出し、標準出力の 1 行目にも載せる。
 
 ---
 

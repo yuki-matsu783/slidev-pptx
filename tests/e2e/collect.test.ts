@@ -116,7 +116,7 @@ describe('collect: img（§2.2 の 6）', () => {
   it('img: src は絶対 URL、alt。a > img は要素の link', () => {
     // デッキは裸の <img> で書いてある。Markdown の ![]() は <p><img></p> になり、規則 11 が先に当たって
     // 規則 6 に届かない（設計 §2.2 に「p の中身が img だけなら p ごと」の特例は無い。README の design-feedback 候補）。
-    // <a> は 3 行に割って HTML ブロックにしてある（1 行に 2 タグ以上だと段落に落ちる）。規則 12 のタグ一覧に a が無い点も候補。
+    // <a> は 3 行に割って HTML ブロックにしてある（1 行に 2 タグ以上だと段落として扱われる）。規則 12 のタグ一覧に a が無い点も候補。
     // 置き場は「表と線」のスライド（箇条書きのスライドは 552 px を超え、下の画像がキャンバスの外に出る）
     const imgs = images(slide(S.table))
     expect(imgs).toHaveLength(2)
@@ -298,7 +298,7 @@ describe('collect: two-cols-header と段落の中の置換対象', () => {
     expect(texts(s)[0].roleHint).toBe('title')
     expect(texts(s).some((t) => t.roleHint === 'body2' && flat(t).includes('右の文'))).toBe(true)
   })
-  it('段落の中の svg は枠の単位で置き換えられないので落として W-INLINE', () => {
+  it('段落の中の svg は枠の単位で置き換えられないので無視して W-INLINE', () => {
     const s = slide(S.twoColsHeader)
     expect(s.warnings.some((w) => w.code === 'W-INLINE')).toBe(true)
     expect(images(s)).toHaveLength(0)

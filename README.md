@@ -27,7 +27,7 @@ pnpm export:pptx-image -- --output slides-image.pptx
 
 - Node 22.18 以降（`engines` の対象。`bin` はビルド無しで TypeScript を直接読みます。22.6〜22.17 でも `--experimental-strip-types` で起動し直すので動きますが、対象外です）
 - Slidev 52 以降、`playwright-chromium` 1.50 以降（書き出しは Slidev のサーバを立てて Chromium で描画し、位置と書式を測ります）。開発時の版は Slidev 52.19.1、PptxGenJS 4.0.1、playwright-chromium 1.63
-- フォントは `slides.md` の `fonts` で **游ゴシック / Consolas** に揃えてあります。Mac では OS 同梱の 游ゴシック体 / Menlo に落ちるので、
+- フォントは `slides.md` の `fonts` で **游ゴシック / Consolas** に揃えてあります。Mac では OS 同梱の 游ゴシック体 / Menlo で代用されるので、
   計測時の行数が Windows の PowerPoint と少し違うことがあります。5% を超えて溢れる枠には縮小率（`normAutofit`）を書きます（数 % の溢れは残ります）
 - 出来上がりは Windows の PowerPoint で確認済みです（2026-09-13、13 枚。「修復」は出ず編集できました）。ほかの環境は未確認です
 
@@ -108,7 +108,7 @@ exit code: 0 成功 / 1 書き出し失敗または OPC エラー（`--strict` �
   - `W-CSS` 再現できない装飾や色を捨てた / `W-MATH-INLINE` インライン数式を文字にした / `W-LI-BLOCK` 箇条書きの中の表や画像を無視した
   - `W-LAYOUT` 対応表に無いレイアウト、またはプレースホルダーに入れられず自由配置にした / `W-OVERFLOW` 枠に収まらないので縮小率を書いた / `W-OFFSLIDE` スライドの外に掛かるので寄せた
   - `W-IMAGE` 画像を取得できず灰色の矩形にした / `W-LINK` 相対リンクや範囲外のスライドへのリンクを外した
-  - `W-HIDDEN` 透明（opacity 0）かスライドの外の要素を飛ばした / `W-INLINE` 段落の中の svg などを落とした
+  - `W-HIDDEN` 透明（opacity 0）かスライドの外の要素を飛ばした / `W-INLINE` 段落の中の svg などを無視した
   - `W-NESTED-PPT` `W-PPT-CONTENT` 部品の入れ子や部品の中の表 / `W-DARK` ダーク固定のデッキ / `W-TRANSITION`
   - `W-RENDER` Slidev の描画エラー、ブラウザのエラー、または UnoCSS のクラスが効かないページを測った（位置と色が Slidev と違うかもしれない）
 - `dropped`: 規則として捨てたものの件数。`code-highlight`（コードの色付け）、`blockquote-border`（引用の縦線）、`transition`、`background-crop`（背景画像の切り取り）、

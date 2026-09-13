@@ -53,7 +53,7 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - `resolveLayout(slideIndex, data, layoutNames: string[])` → レイアウト名
 - `emu(px, canvas)` `pt(px, canvas)` `inch(px, canvas)` `textMargin(inset, canvas)` `cellMargin(inset, canvas)` `toDashType(dash)`
 - `defineMasters` は `LAYOUTS` の複製を PptxGenJS に渡す（`createSlideMaster` が options を破壊するため）
-- `sanitizeXmlText` は XML 1.0 で合法な DEL / C1（0x7F–0x9F）も落とす
+- `sanitizeXmlText` は XML 1.0 で合法な DEL / C1（0x7F–0x9F）も取り除く
 - `notesText` は字下げ後の `- ` も `• ` にし、CRLF を LF にし、`undefined` を空文字にする
 - `findRelByType` は `slideLayout` のような短い名前でも完全な URI でも引ける
 - `two-cols` の `body2` placeholder の `type` は `body`
@@ -65,7 +65,7 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - e2e の viewport は Slidev と同じ「980 × 552 × 枚数」。待機列は `native-export.md` §1.2 を再現し、UnoCSS の遅延注入を待つ段（`.slidev-layout` の padding が効く + `<style>` の長さが 500 ms 動かない）を足した（`tests/e2e/helpers.ts`）
 - xmldom は XML の行末正規化で `<a:t>` の CRLF を LF にする。後処理 5 の区切りは `\r\n | \r | \n` のどれでも
 - 往復の「等価」= 要素名・属性の集合・テキスト（行末を LF に揃える）が再帰的に同じ。空白だけのテキストノード・コメント・XML 宣言は見ない（`tests/patch/pipeline.test.ts` の `firstDifference`）
-- e2e の待機は、デッキ由来のクラスが UnoCSS で生成されたことを確認してから測る（`plain.md` は `.pt-12` の `paddingTop: 48px` で確認する）。Slidev 自身の規則（`px-14`）はファイル変換時に展開されるので、生成の確認には使えない。生成が来ない run は 30 秒で落ちる（黙って誤った値を測らない）
+- e2e の待機は、デッキ由来のクラスが UnoCSS で生成されたことを確認してから測る（`plain.md` は `.pt-12` の `paddingTop: 48px` で確認する）。Slidev 自身の規則（`px-14`）はファイル変換時に展開されるので、生成の確認には使えない。生成が来ない run は 30 秒で打ち切る（黙って誤った値を測らない）
 - CLI の検査は `process.execPath` + `packages/slidev-addon-pptx/bin/slidev-pptx.mjs` で起動する（Windows の `.CMD` は Node 22 では `shell: true` 無しに spawn できない）
 - Vite は作業ツリーで初めてサーバを立てたとき依存を最適化してページを再読み込みする。`openPrint` はコンテナの枚数が揃うまで 1 秒ずつ最大 10 回待つ（e2e が初回だけ落ちる原因だった）
 - Slidev のサーバを立てる間は `NODE_ENV=development` にする（vitest の `test` や `production` だと、Vite 開発サーバで UnoCSS がデッキ由来のクラスを生成せず、`.pt-12` などが永遠に効かない。実測）。`tests/e2e/helpers.ts` と `src/export.ts` の両方
@@ -80,7 +80,7 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 
 - ppt-components.md §2.2: 「`p` の中身が `img`（と空白）だけなら、その `p` ごと画像要素（区切りブロック）」の特例。
   Markdown の `![]()` は `<p><img></p>` になり、今の規則では 11（`p`）が先に当たって 6（`img`）に届かない。
-  このデッキは裸の `<img>` で回避している。`<a><img></a>` も 1 行に書くと段落に落ちるので 3 行に割ってある
+  このデッキは裸の `<img>` で回避している。`<a><img></a>` も 1 行に書くと段落として扱われるので 3 行に割ってある
 - ppt-components.md §2.2 の 12: タグ一覧に `a` を足す。§3.3 の「`a > img` なら `link` を要素に」へ到達する行が無い
 - ppt-components.md §2.2 の 1: `hr` は高さ 0〜1 px なので、「rect が空」を `w === 0 || h === 0` で判定すると規則 10 に届かない
 - ppt-components.md §3.4: Slidev は `[x](#3)` を `href="##3"` にする。「`#N` か `/N`」に `##N` を足す。このデッキは `<a href="/3">` で回避している
@@ -91,7 +91,7 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - native-export.md §1.2: 待機列に UnoCSS の遅延注入を待つ段を足す
 - native-export.md §8.2: `W-TRANSITION` を警告に出すか `dropped` だけにするかを 1 つに
 - native-export.md §8.2: 警告コード `W-LINK` を足す。PptxGenJS の `hyperlink.slide` は PPTX の中での順番なので、`--range` で絞ると元の番号とずれる。範囲内なら写像し、範囲外へのリンクは外して `W-LINK`（外さないと rels が実在しない slideN.xml を指して C4 で落ちる。実測）
-- native-export.md §4.3: 表の `headerRows` は PptxGenJS に渡す口が無く（`<a:tblPr>` に firstRow を出す API が無い）、見出し行は Capture の太さ・塗りだけで表す。設計にも「ヘッダ行は落とす」と書く
+- native-export.md §4.3: 表の `headerRows` は PptxGenJS に渡す口が無く（`<a:tblPr>` に firstRow を出す API が無い）、見出し行は Capture の太さ・塗りだけで表す。設計にも「ヘッダ行は出さない」と書く
 - native-export.md §4.4 / §6: ノートの run は PptxGenJS が `lang="en-US"` で出し、`--lang` は効かない（`addNotes` に lang の口が無い）
 - native-export.md §4.1: 線（`hr` と `PptShape type="line"`）は端点をキャンバスの中に寄せる。C9 は負の `cx cy x y` を error にする（PptxGenJS に負のインチを渡すと `cx="-113758675200"` のような値が出る。実測）
 - native-export.md §4.2: 同じ `roleHint` の枠が 2 つあると `<p:ph idx>` が重複して C12 で落ちる。2 つ目以降は自由配置にして `W-LAYOUT`
@@ -103,7 +103,7 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - native-export.md §8.1: `Report.slideMap`（PPTX の番号 → 元の番号）を足す。後処理（図形名・縮小率）は PPTX の番号、warnings / replacements は元の番号
 - native-export.md §3.3: 縮小率は 2 条件（Slidev で既に溢れている / 出す枠より高い）の不足率の大きいほうを採り、5% を超えて溢れるときだけ書く（計測環境と PowerPoint のフォント差で数 % は動くため）
 - native-export.md §1.2: UnoCSS の生成の確認。2 つの信号のどちらかが無ければ再読み込み（最大 3 回）、それでも来なければ `W-RENDER`。A: DOM のデッキ由来クラス（`.katex` `.mermaid` `pre` `svg` の子孫を除く）のうち CSS 規則を持つ割合が 50% 以上（実測: 生成前 0.03、生成後 0.81〜0.87。KaTeX の同梱 CSS や `text-white` は 1 つでも当たるので「1 つでも当たれば ok」では判定できない）。B: `__uno.css` / `__uno_shortcuts.css` の `<style>` の長さが 1000 以上（生成前 25 / 2572、生成後 1009 / 6539 以上）。`page.on('console')` の "Failed to patch FloatingVue"（Slidev 52.19 の既知の雑音）は `dropped['console-noise']` に件数を出す
-- native-export.md §8.2: 警告コード `W-INLINE`（段落の中の svg / img / table など、枠の単位でしか置き換えられないものを落とした）と `W-RENDER`（Slidev がスライドの描画に失敗している。ブラウザの console.error / pageerror）を足す
+- native-export.md §8.2: 警告コード `W-INLINE`（段落の中の svg / img / table など、枠の単位でしか置き換えられないものを無視した）と `W-RENDER`（Slidev がスライドの描画に失敗している。ブラウザの console.error / pageerror）を足す
 - ppt-components.md §3.4: 空白の畳み込みは CSS と同じ `[ \t\r\n\f]` だけ（全角空白 U+3000 と NBSP は畳まない）。文字色が読めない形式（oklch、color()）や `transparent` のときは黒にして `W-CSS`（白にしない）。`<u>` が `<a>` の中にあれば下線は本物
 - ppt-components.md §2.1: 根が `.slidev-layout` のときも根自身の `background-image`（`layout: image`）と背景色（`layout: end`、`layoutClass`）を読む。`two-cols-header` の `.col-header` / `.col-bottom` は根の領域として歩く（`.col-left` / `.col-right` だけ副領域）
 - ppt-components.md §3.5: `caption` は表の前の自由配置の段落にする
