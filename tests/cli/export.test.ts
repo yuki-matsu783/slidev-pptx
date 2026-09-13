@@ -64,7 +64,7 @@ describe('cli: export', () => {
   it('-o と --report で置き場を変えられ、標準出力に要約が出る', () => {
     const dir = tmp()
     const r = run(['export', PLAIN, '-o', join(dir, 'a.pptx'), '--report', join(dir, 'r.json'), '--range', '1-2'])
-    expect(r.code).toBe(0)
+    expect(r.code, r.err + r.out).toBe(0)
     expect(existsSync(join(dir, 'a.pptx'))).toBe(true)
     expect(JSON.parse(readFileSync(join(dir, 'r.json'), 'utf8')).slides).toBe(2)
     expect(r.out).toMatch(/2 slides/)
@@ -78,7 +78,8 @@ describe('cli: export', () => {
   it('--lang が run の既定 lang になる', async () => {
     const dir = tmp()
     const out = join(dir, 'l.pptx')
-    expect(run(['export', PLAIN, '-o', out, '--range', '2', '--lang', 'en-US']).code).toBe(0)
+    const r = run(['export', PLAIN, '-o', out, '--range', '2', '--lang', 'en-US'])
+    expect(r.code, r.err + r.out).toBe(0)
     const { openPptx, els } = await import('../helpers/pptx')
     const p = await openPptx(readFileSync(out))
     const langs = new Set(els(await p.xml('ppt/slides/slide1.xml'), 'a', 'rPr').map((r) => r.getAttribute('lang')))

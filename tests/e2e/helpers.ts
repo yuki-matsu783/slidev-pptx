@@ -54,6 +54,14 @@ export async function openPrint(browser: Browser, base: string, opts: { range?: 
   const page = await context.newPage()
   const url = `${base}/print?print=true${opts.range ? `&range=${opts.range}` : ''}`
   await page.goto(url, { waitUntil: 'networkidle' })
+  // Vite が初回に依存を最適化するとページを再読み込みする（"optimized dependencies changed. reloading"）。
+  // 枚数が揃うまで少し待って再試行する
+  for (let i = 0; i < 10; i++) {
+    await page.waitForSelector('[data-slidev-no]')
+    const n = await page.evaluate(() => document.querySelectorAll('.print-slide-container').length)
+    if (!opts.slides || n >= opts.slides) break
+    await page.waitForTimeout(1000)
+  }
   await page.waitForSelector('[data-slidev-no]')
   await page.waitForSelector('.slidev-slide-loading', { state: 'detached', timeout: 30_000 }).catch(() => {})
   await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-waitfor]')).every((el) => el.querySelector(el.getAttribute('data-waitfor')!)), null, { timeout: 30_000 }).catch(() => {})

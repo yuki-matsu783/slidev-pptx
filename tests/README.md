@@ -67,6 +67,7 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - 往復の「等価」= 要素名・属性の集合・テキスト（行末を LF に揃える）が再帰的に同じ。空白だけのテキストノード・コメント・XML 宣言は見ない（`tests/patch/pipeline.test.ts` の `firstDifference`）
 - e2e の待機は、デッキ由来のクラスが UnoCSS で生成されたことを番人にする（`plain.md` は `.pt-12` の `paddingTop: 48px`）。Slidev 自身の規則（`px-14`）はファイル変換時に展開されるので番人にならない。生成が来ない run は 30 秒で落ちる（黙って誤った値を測らない）
 - CLI の検査は `process.execPath` + `packages/slidev-addon-pptx/bin/slidev-pptx.mjs` で起動する（Windows の `.CMD` は Node 22 では `shell: true` 無しに spawn できない）
+- Vite は作業ツリーで初めてサーバを立てたとき依存を最適化してページを再読み込みする。`openPrint` はコンテナの枚数が揃うまで 1 秒ずつ最大 10 回待つ（e2e が初回だけ落ちる原因だった）
 - Slidev のサーバを立てる間は `NODE_ENV=development` にする（vitest の `test` や `production` だと、Vite 開発サーバで UnoCSS がデッキ由来のクラスを生成せず、`.pt-12` などが永遠に効かない。実測）。`tests/e2e/helpers.ts` と `src/export.ts` の両方
 - vitest の typecheck は `tests/tsconfig.json` を使う（ルートの `tsconfig.json` は範囲外）。`typescript` と `@types/node` が要る（フェーズ 4 の依存に含める）
 - `rebuildContentTypes` の拡張子 → ContentType は `jpg`/`jpeg` → `image/jpeg`、`webp` → `image/webp`（PptxGenJS 自身は `jpg` → `image/jpg` を出すが、IANA の型に揃える）
@@ -90,6 +91,18 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - native-export.md §1.2: 待機列に UnoCSS の遅延注入を待つ段を足す
 - native-export.md §8.2: `W-TRANSITION` を警告に出すか `dropped` だけにするかを 1 つに
 - native-export.md §8.2: 警告コード `W-LINK` を足す。PptxGenJS の `hyperlink.slide` は PPTX の中での順番なので、`--range` で絞ると元の番号とずれる。範囲内なら写像し、範囲外へのリンクは外して `W-LINK`（外さないと rels が実在しない slideN.xml を指して C4 で落ちる。実測）
+- native-export.md §4.3: 表の `headerRows` は PptxGenJS に渡す口が無く（`<a:tblPr>` に firstRow を出す API が無い）、見出し行は Capture の太さ・塗りだけで表す。設計にも「ヘッダ行は落とす」と書く
+- native-export.md §4.4 / §6: ノートの run は PptxGenJS が `lang="en-US"` で出し、`--lang` は効かない（`addNotes` に lang の口が無い）
+- native-export.md §4.1: 線（`hr` と `PptShape type="line"`）は端点をキャンバスの中に寄せる。C9 は負の `cx cy x y` を error にする（PptxGenJS に負のインチを渡すと `cx="-113758675200"` のような値が出る。実測）
+- native-export.md §4.2: 同じ `roleHint` の枠が 2 つあると `<p:ph idx>` が重複して C12 で落ちる。2 つ目以降は自由配置にして `W-LAYOUT`
+- ppt-components.md §1.3: `PptShape` の `align` / `valign` の既定は `center` / `middle`（設計表の「PptText と同じ」より PowerPoint 流が妥当）。`padding` prop（既定 `[0, 8, 0, 8]` px）を足し、図形の中の文字の余白を PPTX の inset に写す。SVG で描く図形の形は PowerPoint の preset の既定 adj とは別物（近似）。`type="line"` の slot は描かない
+- ppt-components.md §1.5: `PptTable` の `header: false` は slot の Markdown 表の `thead` を消せない（収集器が `opts.header` を見る）
+- native-export.md §8.2: 警告コード `W-INLINE`（段落の中の svg / img / table など、枠の単位でしか置き換えられないものを落とした）と `W-RENDER`（Slidev がスライドの描画に失敗している。ブラウザの console.error / pageerror）を足す
+- ppt-components.md §3.4: 空白の畳み込みは CSS と同じ `[ \t\r\n\f]` だけ（全角空白 U+3000 と NBSP は畳まない）。文字色が読めない形式（oklch、color()）や `transparent` のときは黒にして `W-CSS`（白にしない）。`<u>` が `<a>` の中にあれば下線は本物
+- ppt-components.md §2.1: 根が `.slidev-layout` のときも根自身の `background-image`（`layout: image`）と背景色（`layout: end`、`layoutClass`）を読む。`two-cols-header` の `.col-header` / `.col-bottom` は根の領域として歩く（`.col-left` / `.col-right` だけ副領域）
+- ppt-components.md §3.5: `caption` は表の前の自由配置の段落にする
+- native-export.md §4.3: 表は `rowH` で高さが決まるので、寄せた枠より高いときは行の高さを比例で縮める
+- native-export.md §7: `--keep-server` は失敗時だけ残す。`--wait` `--timeout` は数値でなければ exit 2、`--range` の綴りが不正なら exit 2
 - native-export.md §7: `--range` は Slidev の `/print` では効かないことがある（`useNav` が初期化時に `query.range` を 1 度読むだけ）。URL に渡したうえで Node 側でも絞る（実測）
 
 ## 設計 native-export.md §11「要確認」への答え（フェーズ 4 の実測）
