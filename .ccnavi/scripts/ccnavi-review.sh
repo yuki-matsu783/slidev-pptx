@@ -553,7 +553,7 @@ ready)
 	number=$(printf '%s' "$(cat "$result")" | "$JQ" '.mr.number')
 	url=$(printf '%s' "$(cat "$result")" | "$JQ" -r '.mr.url')
 	still=$(undraft "$number")
-	[ "$still" = "false" ] || fail "Draft を外せなかった（$url）。ホストの返事は上に出ている。"
+	[ "$still" = "false" ] || fail "Draft を外せなかった（${url}）。ホストの返事は上に出ている。"
 	if [ -n "$noted" ] && [ -f "$noted" ]; then
 		comment "$number" "$url" "$noted" >/dev/null && rm -f "$noted"
 	fi
