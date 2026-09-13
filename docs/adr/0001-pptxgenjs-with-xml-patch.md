@@ -31,7 +31,7 @@ API で出せて（画像や表のプレースホルダーは未実装）、OOXM
 ## Consequences
 
 - PptxGenJS の API には「出せるように見えて壊れる」経路が 8 つある（要素リンクが rels に載らない、placeholder 指定で options が総取りされる、`margin` の並び、`rectRadius` の単位、SVG、負の数値、ノートの CRLF、run ごとの `<a:pPr>`）。
-  いずれも後処理か呼び分けで押さえ、一覧と根拠は `wip/design/native-export.md` §4 と `tests/README.md` に「実測」として置く。版を上げるたびに受入テスト（`tests/fixtures/gen-pptx.mjs` の 4 条件）で崩れていないかを確かめる（実装 i0001-04 で追記）。
+  いずれも後処理か呼び分けで押さえ、一覧と根拠は `wip/design/native-export.md` §4 と `tests/README.md` に「実測」として置く。版を上げるたびに受入テスト（`tests/fixtures/gen-pptx.mjs` の 4 条件と `tests/fixtures/gen-pptx.test.ts`、`tests/build/*`）で崩れていないかを確かめる（実装 i0001-04 で追記、i0001-06 で出典を訂正）。
 - 収集は Vite の開発サーバで描画した DOM を測る。UnoCSS はデッキ由来のクラスを最初の読み込みで生成しないことがあるので、書き出しは「クラスが効いたこと」を確認してから測り、効いていなければ再読み込みする。`NODE_ENV` が `test` / `production` だと生成されない（実装 i0001-04 で追記）。
 - 後処理が XML を直接触るので、読めるだけでは足りず、OPC 整合チェッカ（Override・rels・id の突き合わせ）を自前で持って CI で回す（調査 `wip/research/summary.md` §1: 「修復」の原因は python-pptx では検出できなかった）。
 - PptxGenJS の版を上げるときは、後処理が前提にしている出力の形（id の採番、Content_Types の書き方、ノートの CRLF）が変わっていないかを受入テストで確かめる。
