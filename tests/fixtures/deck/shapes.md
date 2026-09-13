@@ -445,3 +445,24 @@ addons:
 <PptShape type="pie" name="honly-pie" :x="670" :y="478" :h="24" fill="#dbeafe" line="#1d4ed8" :size="10">あ</PptShape>
 
 <PptText :x="30" :y="512" :w="480" :size="11" align="left">3 行目: 文字の枠（楕円は内接矩形、三角は下半分）は w と h の両方があるときだけ。w だけ・h だけ（右の楕円・六角形・四つ星・扇形）は枠全体に置き、幅や高さは中身で決まる</PptText>
+
+---
+
+## 境界の入力: 調整値の丸めと範囲外・知らない矢じりと図形
+
+<PptShape type="rightArrow" name="edge-big" :adj="{ adj1: 3000000000 }" :x="30" :y="90" :w="150" :h="80" fill="#fde68a" line="#b45309" :size="11">範囲外は既定</PptShape>
+<PptShape type="wedgeRectCallout" name="edge-frac" :adj="{ adj1: 0.4, adj2: 80000.6 }" :x="220" :y="90" :w="150" :h="80" fill="#fde68a" line="#b45309" :size="11">小数は丸め</PptShape>
+<PptShape type="circularArrow" name="edge-circ" :adj="{ adj5: 12500.6 }" :x="410" :y="80" :w="120" :h="100" fill="#fde68a" line="#b45309" />
+<PptShape type="blockArc" name="edge-blockarc" :adj="{ adj1: 10800000, adj2: 0.4, adj3: 25000 }" :x="570" :y="80" :w="120" :h="100" fill="#fde68a" line="#b45309" />
+<PptShape type="donut" name="edge-huge" :adj="{ adj: 1e12 }" :x="740" :y="80" :w="100" :h="100" fill="#fde68a" line="#b45309" />
+
+<PptShape type="star5" name="edge-str" :adj="{ adj: '10000', hf: 50000 }" :x="30" :y="230" :w="100" :h="100" fill="#fde68a" line="#b45309" />
+<PptShape type="roundRect" name="edge-rr-big" :radius="20" :adj="{ adj: 3e9 }" :x="170" :y="240" :w="150" :h="80" fill="#fde68a" line="#b45309" :size="11">radius 20</PptShape>
+<PptShape type="roundRect" name="edge-rr-neg" :adj="{ adj: -0.4 }" :x="360" :y="240" :w="150" :h="80" fill="#fde68a" line="#b45309" :size="11">adj -0.4</PptShape>
+<PptShape type="foo" name="edge-unknown" :adj="{ adj: 1 }" :x="550" :y="240" :w="150" :h="80" fill="#fde68a" line="#b45309" :size="11">知らない図形</PptShape>
+<PptShape type="bentConnector3" name="edge-bogus" :x="740" :y="240" :w="180" :h="80" :line="{ color: '#7c3aed', width: 2, head: 'oval', tail: 'bogus' }" />
+
+<PptShape type="line" name="edge-line-bogus" :x="30" :y="380" :w="300" :h="40" :line="{ color: '#7c3aed', width: 2, head: 'foo', tail: 'stealth' }" />
+<PptShape type="arc" name="edge-arc-frac" :adj="{ adj1: 16200000.5, adj2: 0.4 }" :x="380" :y="360" :w="120" :h="100" :line="{ color: '#7c3aed', width: 2, tail: 'diamond' }" />
+
+<PptText :x="30" :y="480" :w="920" :size="11" align="left">調整値は Slidev でも PPTX と同じく、定義に無い名前・数でない値・丸めて 32 bit 整数の範囲外を捨て、整数に丸めて使う。知らない矢じりは arrow、知らない図形は rect</PptText>

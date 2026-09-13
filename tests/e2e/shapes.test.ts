@@ -1,6 +1,7 @@
 // PowerPoint の図形 187 種（PptShape の type）を並べたデッキ shapes.md。
 // 収集: 全種が shape / line で出て、調整値・反転・矢じりが Capture に入る。描画: SVG の path と marker が壊れていない。
-// 書き出し: prstGeom と avLst と xfrm の反転、W-SHAPE が出ない。
+// 突き合わせ: DOM の path と evalPreset(normalizeAdjust)、PPTX の avLst と normalizeAdjust、矢じりと headEnd / tailEnd。
+// 書き出し: prstGeom と avLst と xfrm の反転、W-SHAPE は境界の入力の枚だけ。
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,16 +10,45 @@ import type { Browser, Page } from 'playwright-chromium'
 import { collect } from '../../packages/slidev-addon-pptx/src/collect/index'
 import { exportPptx } from '../../packages/slidev-addon-pptx/src/export'
 import { check } from '../../packages/slidev-addon-pptx/src/opc/check'
-import { PRESET_NAMES, evalPreset } from '../../packages/slidev-addon-pptx/src/shapes/geometry'
+import { normalizeAdjust, radiusToAdj } from '../../packages/slidev-addon-pptx/src/shapes/adjust'
+import { PRESET_NAMES, evalPreset, isPreset } from '../../packages/slidev-addon-pptx/src/shapes/geometry'
 import type { Capture, Element, LineElement, Report, ShapeElement } from '../../packages/slidev-addon-pptx/src/types'
 import { els, openPptx, shapeNamed } from '../helpers/pptx'
 import type { OpenedPptx } from '../helpers/pptx'
 import { SHAPES, launch, openPrint, startSlidev } from './helpers'
 import type { Running } from './helpers'
 
-/** 格子 7 枚 + 見本 1 枚 */
-const SLIDE_COUNT = 8
+/** 格子 7 枚 + 見本 1 枚 + 境界の入力 1 枚 */
+const SLIDE_COUNT = 9
 const SAMPLE = 8
+const EDGE = 9
+
+/** 描画後の部品 1 つ分（突き合わせに使う）。line 以外は SVG の実寸と path の d、矢じりは marker の種類 */
+interface DomShape {
+  name: string
+  type: string
+  adj?: Record<string, unknown>
+  radius?: number
+  w: number
+  h: number
+  ds: string[]
+  head: string | null
+  tail: string | null
+  /** 線を引く開いた path（または line 図形）があるか。矢じりはそこにだけ付く */
+  open: boolean
+}
+let dom: DomShape[] = []
+
+/** Slidev と PPTX が使うはずの図形名と調整値（未知の名前は rect、roundRect は radius の換算） */
+const expected = (d: DomShape) => {
+  const type = isPreset(d.type) ? d.type : 'rect'
+  const { adj } = normalizeAdjust(type, d.adj)
+  if (type === 'roundRect' && adj.adj === undefined) {
+    const r = radiusToAdj(d.radius, d.w, d.h)
+    if (r !== undefined) adj.adj = r
+  }
+  return { type, adj }
+}
 
 describe('collect: 図形 187 種', () => {
   let server: Running
@@ -31,6 +61,29 @@ describe('collect: 図形 187 種', () => {
     browser = await launch()
     page = await openPrint(browser, server.base, { slides: SLIDE_COUNT })
     capture = await page.evaluate(collect)
+    dom = await page.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>('[data-ppt="shape"]')).map((el) => {
+        const opts = JSON.parse(el.dataset.pptOpts ?? '{}')
+        const svg = el.querySelector(':scope > svg')!
+        const strokes = Array.from(svg.querySelectorAll('g path:not([stroke="none"]), line'))
+        const kind = (attr: string) => {
+          const ref = strokes.map((s) => s.getAttribute(attr)).find((v) => !!v)
+          return ref ? (/-(\w+)\)$/.exec(ref)?.[1] ?? ref) : null
+        }
+        return {
+          name: el.dataset.pptName ?? '',
+          type: opts.type,
+          adj: opts.adj,
+          radius: opts.radius,
+          w: Number(svg.getAttribute('width')),
+          h: Number(svg.getAttribute('height')),
+          ds: [...new Set(Array.from(svg.querySelectorAll('g path')).map((p) => p.getAttribute('d') ?? ''))],
+          head: kind('marker-start'),
+          tail: kind('marker-end'),
+          open: strokes.some((s) => s.tagName.toLowerCase() === 'line' || !/Z\s*$/.test(s.getAttribute('d') ?? '')),
+        }
+      }),
+    )
   }, 120_000)
   afterAll(async () => {
     await browser?.close()
@@ -39,7 +92,8 @@ describe('collect: 図形 187 種', () => {
 
   const all = (): Element[] => capture.slides.flatMap((s) => s.elements)
   const named = (name: string) => all().find((e) => e.name === name)
-  const sample = (name: string) => capture.slides.find((s) => s.no === SAMPLE)!.elements.find((e) => e.name === name) as ShapeElement
+  const onSlide = (no: number, name: string) => capture.slides.find((s) => s.no === no)!.elements.find((e) => e.name === name) as ShapeElement
+  const sample = (name: string) => onSlide(SAMPLE, name)
   /** 描画後の部品のルート要素の offset*（回転・拡大の前の px） */
   const offsetOf = (name: string) =>
     page.evaluate((n) => {
@@ -102,6 +156,22 @@ describe('collect: 図形 187 種', () => {
     expect(r.unresolved).toEqual([])
   })
 
+  it('突き合わせ: DOM の SVG の path は evalPreset(図形名, 実寸, normalizeAdjust の結果) と一致する（PPTX に書く調整値で形を作る）', () => {
+    const shapes = dom.filter((d) => d.type !== 'line')
+    expect(shapes.length).toBeGreaterThanOrEqual(186)
+    const bad: string[] = []
+    for (const d of shapes) {
+      const { type, adj } = expected(d)
+      const want = new Set(evalPreset(type, d.w, d.h, adj).paths.map((p) => p.d))
+      const miss = d.ds.filter((x) => !want.has(x))
+      if (!d.ds.length || miss.length) bad.push(`${d.name}: ${miss.length}/${d.ds.length} が一致しない`)
+    }
+    expect(bad).toEqual([])
+    // 小数の調整値をそのまま評価すると形が変わる入力で、検査が違いを見分けられること
+    const arc = dom.find((d) => d.name === 'edge-blockarc')!
+    expect(evalPreset('blockArc', arc.w, arc.h, arc.adj as Record<string, number>).paths.map((p) => p.d)).not.toEqual(evalPreset('blockArc', arc.w, arc.h, expected(arc).adj).paths.map((p) => p.d))
+  })
+
   it('図形の中の文字は段落になり、SVG の中身を拾わない', () => {
     expect((named('rect') as ShapeElement).paragraphs?.[0].runs.map((r) => r.text).join('')).toBe('文字')
     expect((named('wedgeRectCallout') as ShapeElement).paragraphs?.[0].runs.map((r) => r.text).join('')).toBe('吹き出し')
@@ -116,11 +186,14 @@ describe('collect: 図形 187 種', () => {
     for (const c of ['W-PPT-CONTENT', 'W-INLINE', 'W-NESTED-PPT', 'W-CSS', 'W-HIDDEN', 'W-RENDER']) expect(codes.filter((x) => x === c), c).toEqual([])
   })
 
-  it('adj は数値のまま Capture に入る', () => {
+  it('adj は数値のまま Capture に入る（丸めや範囲の判断は Node の変換がする）。数でない値は入れない', () => {
     expect(sample('adj-roundRect').adj).toEqual({ adj: 50000 })
     expect(sample('adj-rightArrow').adj).toEqual({ adj1: 80000, adj2: 25000 })
     expect(sample('arc-half').adj).toEqual({ adj1: 10800000, adj2: 0 })
     expect(sample('text-ellipse').adj).toBeUndefined()
+    expect(onSlide(EDGE, 'edge-big').adj).toEqual({ adj1: 3000000000 })
+    expect(onSlide(EDGE, 'edge-frac').adj).toEqual({ adj1: 0.4, adj2: 80000.6 })
+    expect(onSlide(EDGE, 'edge-str').adj).toEqual({ hf: 50000 })
   })
 
   it('flipH / flipV は true のときだけ入る', () => {
@@ -143,30 +216,35 @@ describe('collect: 図形 187 種', () => {
     expect(line.line.head).toBeUndefined()
   })
 
+  it('知らない矢じりは Slidev でも arrow（開いた V 字）で描く', () => {
+    expect(dom.find((d) => d.name === 'edge-bogus')).toMatchObject({ head: 'oval', tail: 'arrow' })
+    expect(dom.find((d) => d.name === 'edge-line-bogus')).toMatchObject({ head: 'arrow', tail: 'stealth' })
+  })
+
   it('h なしの図形は box の h を実測する（中身が 2 行で min-height の 2em より高い）', async () => {
     const e = sample('text-ellipse-auto')
-    const dom = await offsetOf('text-ellipse-auto')
+    const d = await offsetOf('text-ellipse-auto')
     expect(e.boxSource).toBe('prop')
     // min-height で決まった高さでは実測の検査にならないので、中身がそれより高いことを先に確かめる
-    expect(dom.h).toBeGreaterThan(dom.minH + 4)
-    expect(Math.abs(e.box.h - dom.h)).toBeLessThanOrEqual(1)
+    expect(d.h).toBeGreaterThan(d.minH + 4)
+    expect(Math.abs(e.box.h - d.h)).toBeLessThanOrEqual(1)
   })
 
   it('rotate と実測の幅: box は回転前の枠で、w は描画後の幅と一致する（onMounted の古い値のままにならない）', async () => {
     const e = sample('rot-wauto')
-    const dom = await offsetOf('rot-wauto')
+    const d = await offsetOf('rot-wauto')
     expect(e.rotate).toBe(30)
     expect(e.box).toMatchObject({ x: 760, y: 440, h: 60 })
-    expect(Math.abs(e.box.w - dom.w)).toBeLessThanOrEqual(0.5)
+    expect(Math.abs(e.box.w - d.w)).toBeLessThanOrEqual(0.5)
   })
 
   const H_ONLY = ['honly-star4', 'honly-pie', 'rot-wauto']
 
   it('h だけ指定した図形: 文字は枠全体に置き（margin なし）、幅は文字の幅程度に収まる', async () => {
     for (const n of H_ONLY) {
-      const dom = await offsetOf(n)
-      expect(dom.w, n).toBeGreaterThan(0)
-      expect(dom.w, n).toBeLessThan(200)
+      const d = await offsetOf(n)
+      expect(d.w, n).toBeGreaterThan(0)
+      expect(d.w, n).toBeLessThan(200)
       expect(sample(n).box.w, n).toBeLessThan(200)
       const margin = await page.evaluate((name) => document.querySelector<HTMLElement>(`[data-ppt-name="${name}"] > .ppt-shape-text`)!.style.margin, n)
       expect(margin, n).toBe('')
@@ -208,7 +286,7 @@ describe('collect: 図形 187 種', () => {
   it('w と h の両方がある図形は、文字の div が定義の文字の枠（textRect）の中に入る', async () => {
     for (const n of ['text-ellipse', 'text-triangle', 'text-callout', 'adj-rightArrow']) {
       const e = sample(n)
-      const rect = evalPreset(e.shape, e.box.w, e.box.h, e.adj).textRect
+      const rect = evalPreset(e.shape, e.box.w, e.box.h, normalizeAdjust(e.shape, e.adj).adj).textRect
       const div = await page.evaluate((name) => {
         const t = document.querySelector<HTMLElement>(`[data-ppt-name="${name}"] > .ppt-shape-text`)!
         return { l: t.offsetLeft, t: t.offsetTop, r: t.offsetLeft + t.offsetWidth, b: t.offsetTop + t.offsetHeight }
@@ -253,8 +331,10 @@ describe('exportPptx: 図形 187 種', () => {
     expect(results.filter((r) => r.level === 'error')).toEqual([])
   })
 
-  it('W-SHAPE が 0 件（187 種の名前・見本の調整値・矢じりはどれも PowerPoint にある）', () => {
-    expect(report.warnings.filter((w) => w.code === 'W-SHAPE')).toEqual([])
+  it('W-SHAPE: 格子と見本（1〜8 枚目）は 0 件。境界の入力（9 枚目）は捨てた調整値・知らない矢じり・知らない図形の分だけ 1 件ずつ', () => {
+    const ws = report.warnings.filter((w) => w.code === 'W-SHAPE')
+    expect(ws.filter((w) => w.slide !== EDGE)).toEqual([])
+    expect(ws.map((w) => w.name).sort()).toEqual(['edge-big', 'edge-bogus', 'edge-huge', 'edge-line-bogus', 'edge-rr-big', 'edge-unknown'])
   })
 
   it('全スライドの <a:prstGeom prst> に 187 種がそろう', () => {
@@ -275,6 +355,34 @@ describe('exportPptx: 図形 187 種', () => {
     expect(gds('adj-rightArrow')).toEqual({ adj1: 'val 80000', adj2: 'val 25000' })
     expect(gds('adj-star5')).toMatchObject({ adj: 'val 10000' })
     expect(gds('arc-half')).toMatchObject({ adj1: 'val 10800000', adj2: 'val 0' })
+  })
+
+  it('突き合わせ: 全図形の prst と <a:avLst> の gd が、Slidev が形を作った図形名と normalizeAdjust の結果に一致する', () => {
+    const bad: string[] = []
+    for (const d of dom.filter((x) => x.type !== 'line')) {
+      const want = expected(d)
+      const sp = shape(d.name)
+      const geom = els(sp as never, 'a', 'prstGeom')[0]
+      const got = Object.fromEntries(els(geom as never, 'a', 'gd').map((g) => [g.getAttribute('name'), Number((g.getAttribute('fmla') ?? '').replace(/^val /, ''))]))
+      if (geom?.getAttribute('prst') !== want.type) bad.push(`${d.name}: prst ${geom?.getAttribute('prst')} != ${want.type}`)
+      if (JSON.stringify(Object.entries(got).sort()) !== JSON.stringify(Object.entries(want.adj).sort())) bad.push(`${d.name}: gd ${JSON.stringify(got)} != ${JSON.stringify(want.adj)}`)
+    }
+    expect(bad).toEqual([])
+  })
+
+  it('突き合わせ: 開いた path のある図形と線の矢じりの種類が <a:headEnd> / <a:tailEnd> と一致する', () => {
+    const bad: string[] = []
+    const opened = dom.filter((d) => d.open)
+    expect(opened.some((d) => d.head || d.tail)).toBe(true)
+    for (const d of opened) {
+      const ln = els(shape(d.name) as never, 'a', 'ln')[0]
+      const end = (local: string) => {
+        const v = ln ? (els(ln as never, 'a', local)[0]?.getAttribute('type') ?? null) : null
+        return v === 'none' ? null : v
+      }
+      if (end('headEnd') !== d.head || end('tailEnd') !== d.tail) bad.push(`${d.name}: pptx ${end('headEnd')}/${end('tailEnd')} dom ${d.head}/${d.tail}`)
+    }
+    expect(bad).toEqual([])
   })
 
   it('flipH / flipV が <a:xfrm> に出る', () => {
