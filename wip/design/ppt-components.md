@@ -68,7 +68,7 @@ Capture: `kind: 'shape'`（`line` は `kind: 'line'`）。`rotate` があると�
 | `alt` | `string` | `''` | 代替文字。PPTX の `descr` に入れる（PptxGenJS `altText`） |
 | `fit` | `'contain' \| 'cover' \| 'fill'` | `'contain'` | 枠の中での収め方。CSS `object-fit` と PptxGenJS `sizing.type` に同じ値を渡す |
 
-描画は `<img>`。Capture は `kind: 'image'`、`src` は絶対 URL に解決したもの（Node が fetch。SVG は Node が撮影に切り替える）。
+描画は `<img>` に `object-fit: fit`。Capture は `kind: 'image'`、`src` は絶対 URL に解決したもの（Node が fetch。SVG は Node が撮影に切り替える）。PPTX 側は `contain` / `cover` だけ `sizing` に写し、`fill` は `sizing` 無し（native-export.md §4.3。`type: 'fill'` を渡すと `write()` が落ちる）。
 
 `fit` を持たせて `<img>` そのままにしない。
 - 得るもの: 写真を枠に合わせて切る書き方が Slidev と PPTX で同じになる。
@@ -120,8 +120,8 @@ JSON にできない props は無いので、属性を選ぶ。
 
 1. `#print-content > .print-slide-container` を順に取る。`canvas.width/height` はこの要素の rect。`backgroundColor` はこの要素の computed。
 2. その中の `[data-slidev-no]` から `no` と `lang`。`.slidev-page` の `scale` を `zoom` に。
-3. `[data-slidev-no]` から子孫へ降りる。**`.slidev-layout` に当たったらそれを領域の根**にする。根の直下に `.col-left` と `.col-right` があれば（`two-cols`）、その 2 つを副領域にして別々に歩く（`.col-right` の要素は `role` の候補が `body2` になる）。`.slidev-layout` に当たらない枝（`image-right` の右半分 `div[style*=background-image]` など）は、そのまま §2.2 の規則で歩く。
-4. 根の子を文書順に歩く（§2.2）。
+3. `[data-slidev-no]` から子孫へ降りて**根の列**を作る。`.slidev-layout` に当たったらそれを根の 1 つにして、その下へは降りない。`.slidev-layout` でなく、子孫にも `.slidev-layout` を持たない要素のうち最上位のもの（`image-right` の右半分 `div[style*=background-image]` など）を根の 1 つにする。外側の `div.grid` は子孫に `.slidev-layout` を持つので根にならない。根の列は文書順。
+4. 根ごとに、子を文書順に歩く（§2.2）。根が `.slidev-layout` で直下に `.col-left` と `.col-right` があれば（`two-cols`）、その 2 つを副領域にして別々に歩く（`.col-right` の要素は `roleHint` の候補が `body2` になる）。
 
 ### 2.2 要素の分類（歩く順に判定。最初に当たった行で決まる）
 
@@ -129,24 +129,32 @@ JSON にできない props は無いので、属性を選ぶ。
 
 | # | 条件 | 扱い |
 |---|---|---|
-| 1 | 表示されていない（`display:none`、`visibility:hidden`、rect が空、キャンバスの外） | 飛ばす。`opacity:0` とキャンバス外は `W-HIDDEN` |
+| 0 | Slidev の UI（`.slidev-code-copy`、`.slidev-icon`、`.slidev-icon-btn`、`SlideTop` / `SlideBottom` が描く要素、`[data-slidev-clicks-start]` の印だけの空要素） | 警告なしで飛ばす。コードブロックのコピーボタンは `opacity: 0` で全スライドにあるので、ここで消さないと雑音になる |
+| 1 | 表示されていない（`display:none`、`visibility:hidden`、`opacity: 0`（祖先の積）、rect が空、キャンバスの外） | 飛ばす。`opacity: 0` とキャンバス外は `W-HIDDEN`、それ以外は無警告 |
 | 2 | `[data-ppt]` | PPT 部品（§1）。中に `[data-ppt]` があれば `W-NESTED-PPT` で無視 |
 | 3 | `[data-ppt-export="image"]`（部品以外の要素に手で付けたもの） | 画像への置き換え、`reason: 'explicit'` |
 | 4 | `background-image` を持つ要素（`img` 以外） | 子孫に可視テキストが無ければ: `url()` があれば画像要素（URL を取得。`linear-gradient` が重なっていれば捨てて `W-CSS`）、`url()` が無ければ画像への置き換え `reason: 'gradient'`。子孫に可視テキストがあれば: 要素ごと画像への置き換え `reason: 'explicit'`（文字も絵になるが見た目は合う。文字を編集したければ背景を `PptShape` か `PptImage` に分けて書く）。どちらも**中は歩かない** |
-| 5 | `.katex-display`、`.mermaid`、`svg`、`canvas`、`iframe`、`video`、`audio`、`object`、`embed` | 画像への置き換え（`reason: 'math' \| 'mermaid' \| 'svg'`） |
+| 5 | `.katex-display`、`.mermaid`、`svg`、`canvas`、`iframe`、`video`、`audio`、`object`、`embed`。**`p` の中身が `.katex-display`（と空白）だけなら、その `p` ごと**（Slidev はブロック数式を `div.slidev-katex-wrapper > p > span.katex-display` で描くので、`p` を 11 で拾うと数式に到達しない） | 画像への置き換え（`reason: 'math' \| 'mermaid' \| 'svg'`）。`.mermaid` の中は Shadow DOM で歩けないが、撮影はホスト要素で足りる |
 | 6 | `img` | 画像要素（`src` を取得） |
 | 7 | `table` | 表要素（§3.5） |
 | 8 | `pre` | コードブロック（§3.6）、区切りブロック |
 | 9 | `blockquote` | 引用（§3.7）、区切りブロック |
 | 10 | `hr` | 線要素（実測の上辺、computed `border-top-color`） |
 | 11 | `h1`–`h6` `p` `ul` `ol` | 流し込みブロック（§3.1） |
-| 12 | `div` `section` `article` `main` `aside` `header` `footer` `span` `figure` で、**装飾を持たない** | 透明な入れ物。中を歩く（`.col-left` `.col-right` もここ） |
-| 13 | 12 のタグで装飾を持ち、子孫が 11 と inline 要素だけ（子が無い場合も含む。ただし 4 で先に拾われる） | 自前のテキスト枠（区切りブロック）。装飾は `frame` に写し、写せないものは `W-CSS` |
-| 14 | 12 のタグで装飾を持ち、子孫に 3–10 か 13 がある | 装飾を `W-CSS` で捨てて、透明な入れ物として中を歩く |
+| 12 | `div` `section` `article` `main` `aside` `header` `footer` `span` `figure` で、**装飾を持たない** | 透明な入れ物。中を歩く（`.col-left` `.col-right` もここ）。**子に可視のテキストノードや inline 要素を直接持つなら、文書順に、連続する inline の連なりごとに 1 つの `plain` 段落として流し込みブロックに数える**（ブロックの子が間に入れば、そこで連なりが切れる。markdown-it の HTML ブロックは `<p>` に包まれない。`slides.md` の `<span>Space / → で次へ</span>` や `<div v-click>クリックのたびに…</div>` がこれ） |
+| 13 | 12 のタグで装飾を持ち、**装飾を持たない入れ物（12）だけを通って**到達する子孫が 11・裸のテキスト・inline 要素だけ（子が無い場合も含む。ただし 4 で先に拾われる） | 自前のテキスト枠（区切りブロック）。中の入れ物は透明に抜けて段落になる。装飾は `frame` に写し、写せないものは `W-CSS` |
+| 14 | 12 のタグで装飾を持ち、子孫に 3–10 か 13（装飾つきの入れ物）がある | 装飾を `W-CSS` で捨てて、透明な入れ物として中を歩く |
 | 15 | それ以外（`button` `input` `details` `kbd` を含む未知タグ、Vue 部品が描く任意の要素）。`kbd` は inline で現れたときは §3.4 の run になり、ブロックとして現れたときだけここ | 画像への置き換え、`reason: 'unknown-element'` |
 
 - 得るもの: Tailwind の `div` 入れ子（`grid`、`pt-12`）は透明に抜け、中の文字はネイティブになる。色付きの箱は塗りのあるテキスト枠になる。
-- 失うもの: 14 のとき、箱の見た目（背景・角丸）が消える。`slides.md` の「アニメーション」スライドの 3 つの箱は 13 に当たるので残る。
+- 失うもの: 14 のとき、箱の見た目（背景・角丸）が消える。`slides.md` の「アニメーション」スライドの 3 つの箱（`div.p-6.rounded-lg.bg-blue-500/20 > div.text-3xl + div`）は、子が装飾の無い `div` なので 13 に当たり、2 段落のテキスト枠として残る。
+
+`slides.md` を通した確認（実装フェーズの e2e の期待値の元）:
+- 表紙: `.slidev-layout.cover > div.my-auto > h1 + p + div.pt-12 > span` → `h1` は 12 を通って到達するので `title` 候補。`p` と、`div.pt-12`（12）の裸テキスト `span` の文は、間に区切りブロックが無いので**同じ枠**（`body` 候補）の 2 段落。入れ物の境界では枠を閉じない。
+- 「Slidev とは」: `h2` → title 候補、`ul`（`v-clicks` はラッパを作らない）→ body 候補。
+- 「コードのハイライト」: `h2` → title 候補、`p` → body 候補、`div.slidev-code-wrapper`（12）> `pre`（8）→ 自由配置の code 枠、`button.slidev-code-copy`（0）→ 飛ばす。
+- 「数式」: `p`（インライン `.katex` を含む）→ body 候補に `W-MATH-INLINE`、`div.slidev-katex-wrapper > p > .katex-display` → 5 で画像。
+- 「Vue コンポーネント」: `div.mt-6 > button` → 12 を通って `button` が 15 で画像。
 
 ### 2.3 位置と大きさ
 
@@ -165,25 +173,28 @@ JSON にできない props は無いので、属性を選ぶ。
 連続する流し込みブロック（`h1`–`h6` `p` `ul` `ol`、および 2.2 の 13 の中身）を 1 つのテキスト枠にまとめる。
 区切りブロック（表・コードブロック・引用・画像・置き換え・PPT 部品・装飾つきの箱）が来たら枠を閉じ、次の流し込みブロックから新しい枠を開く。
 
-`role` の決め方:
-- スライドの中で文書順に最初の `h1` か `h2`（`.slidev-layout` 直下、または `.col-left` 直下）→ `title`。この見出しだけで 1 枠。
-- **`title` の直後に、区切りブロックを挟まずに**開く枠（`.col-left` または根の直下）→ `body`。間に区切りブロックがあれば `body` は開かれない（placeholder の固定位置に飛んで、実測配置の要素と重なるため）。
-- `.col-right` の最初の要素が流し込みブロックなら、その枠 → `body2`。最初の要素が区切りブロックなら右列は全て `free`。
-- それ以外の枠は全て `free`（実測の座標）。
-- レイアウトが対応表に無い（`blank`）なら全て `free`。
+`roleHint`（候補）の決め方。収集器は DOM の事実だけを写し、placeholder に入れるかどうかは Node が決める（native-export.md §4.2。収集器はレイアウト名も対応表も知らない）:
+- スライドの中で文書順に最初の `h1` か `h2` で、根（または `.col-left`）から**装飾を持たない入れ物（§2.2 の 12）だけを通って**到達するもの → `title` 候補。この見出しだけで 1 枠。theme-default の `cover` と client の `center` は slot を `div.my-auto` で包むので、「直下」に限ると表紙の見出しが候補にならない。
+- **`title` の直後に、区切りブロックを挟まずに**開く枠（同じ領域）→ `body` 候補。間に区切りブロックがあれば `body` 候補は無い（placeholder の固定位置に飛んで、実測配置の要素と重なるため）。
+- `.col-right` の最初の要素が流し込みブロックなら、その枠 → `body2` 候補。最初の要素が区切りブロックなら右列に候補は無い。
+- それ以外の枠には `roleHint` を付けない（自由配置）。
+- Node 側: レイアウトが対応表に無い（`blank`）か、対応表のそのレイアウトに同名の placeholder が無ければ、候補は捨てて自由配置にする。
+
+- 得るもの: 収集器が「測って写す」に保たれ、対応表の変更が Node に閉じる。
+- 失うもの: Capture を見ただけでは placeholder に入るか分からない。受入テストの fixture は Capture と `options.data` 相当を対で持つ。
 
 親チケットの「見出しはタイトル枠」は主見出し 1 つを指すと解した。2 つ目以降の見出しと h3 以降は、枠の中の見出し段落になる。
 
 例（`slides.md` の「始め方」、two-cols）:
 ```
-.col-left : h2「始め方」→ title / pre → free(code)
-.col-right: h2「画面」+ ul → body2（見出しは body2 の中の heading 段落）
+.col-left : h2「始め方」→ title 候補 / pre → 自由配置の code 枠
+.col-right: h2「画面」+ ul → body2 候補（見出しは body2 の中の heading 段落）
 ```
-`body` は開かれない。
+`body` 候補は無い。
 
 例（「Vue コンポーネントを埋め込む」）:
 ```
-h2 → title / p → body / div.mt-6 > Counter(button) → image(unknown-element) / pre → free(code) / p → free
+h2 → title 候補 / p → body 候補 / div.mt-6 > Counter(button) → image(unknown-element) / pre → 自由配置の code 枠 / p → 自由配置
 ```
 
 - 得るもの: 段落と箇条書きが 1 つの枠で流れるので、PowerPoint で文を足すと下の行が押し下がる。
@@ -249,7 +260,7 @@ h2 → title / p → body / div.mt-6 > Counter(button) → image(unknown-element
 ### 3.6 コードブロック
 
 - `pre .line` を 1 行 1 段落（`kind: 'code'`）。`.line` が無ければ `textContent` を改行で割る。
-- 色付け（Shiki の `span style="color"`）は捨てて、`pre` の computed `color` を全 run に使う。行番号（`lineNumbers: true`）と行強調（`{2|4-6}`）は捨てる。行頭の空白は保つ（native-export.md §11 の 2）。
+- 色付け（Shiki の `span style="--shiki-light: …"`。色は CSS 変数経由で、`emulateMedia({ colorScheme: 'light' })` が効いている前提で computed に解決される）は捨てて、`pre` の computed `color` を全 run に使う。行番号（`lineNumbers: true`）と行強調（`{2|4-6}`。print では全行に `slidev-code-highlighted highlighted` が付くので、この class は無視する）は捨てる。行頭の空白は保つ（native-export.md §11 の 2）。
 - `frame.fill` は `pre` の computed 背景色、`frame.inset` は padding、`frame.radius` は border-radius。
 - `W-CSS` は出さない。色付けを捨てるのは規則（親チケットの決定）で、`Report.dropped['code-highlight']` に件数だけ出す。
 - 画像で出したいときは `<div data-ppt-export="image">` で囲む。
@@ -263,7 +274,7 @@ h2 → title / p → body / div.mt-6 > Counter(button) → image(unknown-element
 
 ### 3.8 `::right::`（2 段組）
 
-`.col-right` を第 2 の領域として歩く。`body2` placeholder（`native-export.md` §5.2）に最初の枠を入れ、残りは `free`。
+`.col-right` を第 2 の領域として歩く。最初の枠が `body2` 候補（`native-export.md` §5.2 の placeholder）、残りは自由配置。
 
 ---
 

@@ -29,6 +29,7 @@ API で出せて（画像や表のプレースホルダーは未実装）、OOXM
 
 ## Consequences
 
+- PptxGenJS の API には「出せるように見えて壊れる」経路がある（`addText` に要素全体のハイパーリンクを渡すと rels に登録されない、placeholder 指定で呼び出し側の options がレイアウト側に上書きされる、など）。要素リンクは `addShape` / `addImage` に限り、文字のある図形は run に写す。こうした制約は設計文書に「実測」として残し、版を上げるたびに受入テストで確かめる。
 - 後処理が XML を直接触るので、python-pptx で読めるだけでは足りず、OPC 整合チェッカ（Override・rels・id の突き合わせ）を自前で持って CI で回す。
 - PptxGenJS の版を上げるときは、後処理が前提にしている出力の形（id の採番、Content_Types の書き方、ノートの CRLF）が変わっていないかを受入テストで確かめる。
 - 一方向なので、PowerPoint で直した内容を残したい人は、Slidev 側を直して書き出し直す。設計文書 `wip/design/native-export.md` と `ppt-components.md` がこの決定の上に立つ。
