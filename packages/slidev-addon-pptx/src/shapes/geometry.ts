@@ -54,7 +54,7 @@ export function evalPreset(name: string, w: number, h: number, adj?: Record<stri
     stroke: p.stroke !== false,
   }))
   const [l, t, r, b] = shape.rect ? shape.rect.map((v) => get(v) / SCALE) : [0, 0, W / SCALE, H / SCALE]
-  // 定義の誤記（pie の rect）への対処。l≤r、t≤b に揃える
+  // 保険として l≤r、t≤b に揃える。定義の誤記（pie の rect）は生成時に直してある（scripts/gen-presets.mjs の RECT_FIXES）
   return { paths, textRect: { l: Math.min(l, r), t: Math.min(t, b), r: Math.max(l, r), b: Math.max(t, b) } }
 }
 

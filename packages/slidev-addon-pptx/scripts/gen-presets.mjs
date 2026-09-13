@@ -12,6 +12,14 @@ import { DOMParser } from '@xmldom/xmldom'
 const SOURCE_COMMIT = '500a70ba19d9c1207fd9121531950e55a70fd940'
 const SOURCE_URL = `https://raw.githubusercontent.com/LibreOffice/core/${SOURCE_COMMIT}/oox/source/drawingml/customshapes/presetShapeDefinitions.xml`
 
+/**
+ * 定義のデータの補正（図形名 → 直した rect）。
+ * pie: 元は l="il" t="ir" r="it" b="ib"。ECMA の定義の誤記。t と r の名前が入れ替わっていて、枠が図形の外に出る。PowerPoint の実挙動は未確認
+ */
+const RECT_FIXES = {
+  pie: ['il', 'it', 'ir', 'ib'],
+}
+
 const src = process.argv[2]
 if (!src) {
   console.error('usage: gen-presets.mjs <presetShapeDefinitions.xml>')
@@ -33,6 +41,13 @@ for (const shape of kids(doc.documentElement)) {
   const s = { av: guides(kids(shape, 'avLst')[0]), gd: guides(kids(shape, 'gdLst')[0]), paths: [] }
   const rect = kids(shape, 'rect')[0]
   if (rect) s.rect = ['l', 't', 'r', 'b'].map((k) => rect.getAttribute(k))
+  if (RECT_FIXES[shape.localName]) {
+    // 元の XML が直っていたら補正は要らない。表から消すよう止める
+    if (!s.rect || JSON.stringify(s.rect) === JSON.stringify(RECT_FIXES[shape.localName])) {
+      throw new Error(`${shape.localName}: rect の補正が要らない（元の rect ${JSON.stringify(s.rect)}）。RECT_FIXES から消す`)
+    }
+    s.rect = RECT_FIXES[shape.localName]
+  }
   for (const path of kids(kids(shape, 'pathLst')[0], 'path')) {
     const p = { cmds: [] }
     if (path.getAttribute('w')) p.w = Number(path.getAttribute('w'))
@@ -57,6 +72,9 @@ for (const shape of kids(doc.documentElement)) {
   shapes[shape.localName] = s
 }
 
+for (const n of Object.keys(RECT_FIXES)) if (!shapes[n]) throw new Error(`RECT_FIXES の ${n} が定義に無い`)
+const fixes = Object.keys(RECT_FIXES)
+
 const names = Object.keys(shapes).sort()
 const body = names.map((n) => `  ${n}: ${JSON.stringify(shapes[n])},`).join('\n')
 writeFileSync(
@@ -64,6 +82,7 @@ writeFileSync(
   `// 生成物。手で直さない。scripts/gen-presets.mjs で作り直す。
 // 元: ECMA-376 Part 1（Office Open XML File Formats, Fundamentals and Markup Language Reference）の
 // presetShapeDefinitions.xml。PowerPoint の図形 ${names.length} 種の定義。Copyright © Ecma International.
+// 補正 ${fixes.length} 件（${fixes.map((n) => `${n} の rect`).join('、')}）。理由は scripts/gen-presets.mjs の RECT_FIXES
 // 取得元: ${SOURCE_URL}
 // XML の sha256: ${sha256}
 import type { PresetShape } from './types.ts'

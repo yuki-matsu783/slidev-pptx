@@ -290,12 +290,11 @@ describe('shapes/geometry: 回帰（レビューの指摘）', () => {
     expect(evalPreset('arc', 200, 100, { adj1: 0, adj2: 21599999 }).paths[1].d).toBe('M200 50 A100 50 0 0 1 0 50 A100 50 0 0 1 200 50')
   })
 
-  it('pie の文字の枠は定義の誤記（t="ir" r="it"）を l≤r、t≤b に揃える', () => {
+  it('pie の文字の枠は定義の誤記（t="ir" r="it"）を生成時に (il, it, ir, ib) へ直してある', () => {
     // 200×100: idx = cos wd2 45° = 70.711、idy = sin hd2 45° = 35.355
-    // il = hc − idx = 29.289、ir = hc + idx = 170.711、it = vc − idy = 14.645、ib = vc + idy = 85.355
-    // rect は l=il t=ir r=it b=ib = (29.289, 170.711, 14.645, 85.355) → 揃えて l=14.645 t=85.355 r=29.289 b=170.711
+    // il = hc − idx = 29.289、it = vc − idy = 14.645、ir = hc + idx = 170.711、ib = vc + idy = 85.355
     const { l, t, r, b } = evalPreset('pie', 200, 100).textRect
-    expectPoints([l, t, r, b], [14.645, 85.355, 29.289, 170.711])
+    expectPoints([l, t, r, b], [29.289, 14.645, 170.711, 85.355])
   })
 
   it('arc の adj1 = adj2 は 1 周（swAng = ?: sw11 sw11 sw12 で sw11 = 0 は 0 より大きくない）', () => {
