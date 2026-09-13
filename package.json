@@ -7,5 +7,10 @@
     "build": "slidev build",
     "export": "slidev export",
     "export:pptx": "slidev export --format pptx"
+  },
+  "devDependencies": {
+    "@slidev/cli": "^52.19.1",
+    "@slidev/theme-default": "^0.25.0",
+    "playwright-chromium": "^1.63.0"
   }
 }
