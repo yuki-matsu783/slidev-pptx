@@ -15,7 +15,12 @@ export function collect(): Capture {
   const px = (v: string) => parseFloat(v) || 0
   const hex = (color: string): string => {
     const m = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?\s*\)/i.exec(color ?? '')
-    if (!m) return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : '#ffffff'
+    if (!m) {
+      if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase()
+      const s = /^#([0-9a-f]{3})$/i.exec(color ?? '')
+      if (s) return '#' + s[1].toLowerCase().split('').map((c) => c + c).join('')
+      return '#ffffff'
+    }
     if (m[4] !== undefined && Number(m[4]) === 0) return '#ffffff'
     return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('')
   }
@@ -509,11 +514,12 @@ export function collect(): Capture {
       }
       const d = decorOf(el)
       const frame: FrameStyle = { inset: d.inset }
-      if (typeof opts.fill === 'string' && opts.fill !== 'none') frame.fill = { color: opts.fill as string }
+      // 塗りと線は props（opts）を正とし、無ければ computed から（部品は props を CSS にも写しているので同じ値になる）
+      if (typeof opts.fill === 'string' && opts.fill !== 'none') frame.fill = { color: hex(opts.fill as string) }
       else if (d.fill && opts.fill !== 'none') frame.fill = d.fill
       if (opts.line && opts.line !== 'none') {
         const l = opts.line as { color?: string; width?: number; dash?: Dash } | string
-        frame.line = typeof l === 'string' ? { color: l, width: 1, dash: 'solid' } : { color: l.color ?? '#000000', width: l.width ?? 1, dash: l.dash ?? 'solid' }
+        frame.line = typeof l === 'string' ? { color: hex(l), width: 1, dash: 'solid' } : { color: hex(l.color ?? '#000000'), width: l.width ?? 1, dash: l.dash ?? 'solid' }
       } else if (d.line && opts.line !== 'none') frame.line = d.line
       if (typeof opts.radius === 'number') frame.radius = opts.radius
       else if (d.radius) frame.radius = d.radius
@@ -533,7 +539,7 @@ export function collect(): Capture {
           const from = { x: box.x, y: box.y }
           const to = { x: box.x + box.w, y: box.y + box.h }
           const l = typeof lineOpts === 'object' && lineOpts ? lineOpts : { color: typeof lineOpts === 'string' ? lineOpts : '#000000' }
-          elements.push({ id, name, source: 'ppt', kind: 'line', box, boxSource, from, to, line: { color: l.color ?? '#000000', width: l.width ?? 1, dash: l.dash ?? 'solid', head: l.head, tail: l.tail } })
+          elements.push({ id, name, source: 'ppt', kind: 'line', box, boxSource, from, to, line: { color: hex(l.color ?? '#000000'), width: l.width ?? 1, dash: l.dash ?? 'solid', head: l.head, tail: l.tail } })
           return
         }
         if (!frame.fill && opts.fill !== 'none') frame.fill = { color: '#ffffff' }

@@ -184,14 +184,14 @@ async function collectAssets(page: Page, capture: Capture, data: DeckData, base:
 
 // ---------------------------------------------------------------- 補助
 
-function toDeckData(data: { slides: unknown[]; config: Record<string, unknown> }): DeckData {
+function toDeckData(data: { slides: unknown[]; config: object }): DeckData {
   const slides = (data.slides as { index: number; frontmatter: Record<string, unknown>; note?: string; title?: string }[]).map((s, i) => ({
     index: s.index ?? i,
     frontmatter: (s.frontmatter ?? {}) as DeckData['slides'][number]['frontmatter'],
     note: s.note,
     title: s.title,
   }))
-  const c = data.config
+  const c = data.config as Record<string, unknown>
   return {
     slides,
     config: {
