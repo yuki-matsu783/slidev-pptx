@@ -29,7 +29,12 @@ API で出せて（画像や表のプレースホルダーは未実装）、OOXM
 
 ## Consequences
 
-- PptxGenJS の API には「出せるように見えて壊れる」経路がある（`addText` に要素全体のハイパーリンクを渡すと rels に登録されない、placeholder 指定で呼び出し側の options がレイアウト側に上書きされる、など）。要素リンクは `addShape` / `addImage` に限り、文字のある図形は run に写す。こうした制約は設計文書に「実測」として残し、版を上げるたびに受入テストで確かめる。
+- PptxGenJS の API には「出せるように見えて壊れる」経路がある。実装（i0001-04）で確かめたもの:
+  `addText` に要素全体のハイパーリンクを渡すと rels に登録されない（`rIdundefined`）／placeholder 指定で呼び出し側の options（`objectName` を含む）がレイアウト側に総取りで上書きされる／
+  テキスト枠の `margin` は型定義の TRBL ではなく実装の `[左, 右, 下, 上]`／`rectRadius` はインチで EMU を渡すと桁あふれする／SVG を `addImage` に渡すと PNG のパートに SVG が入って壊れる／
+  100 未満の数値はインチ扱いで負の値も通る／ノートは 1 つの `<a:t>` に CRLF で詰まる／run ごとに `<a:pPr>` が出てスキーマに反する。
+  要素リンクは `addShape` / `addImage` に限り、文字のある図形は run に写す。名前は後処理で付け直す。こうした制約は設計文書と `tests/README.md` に「実測」として残し、版を上げるたびに受入テスト（`tests/fixtures/gen-pptx.mjs` の 4 条件）で確かめる。
+- 収集は Vite の開発サーバで描画した DOM を測る。UnoCSS はデッキ由来のクラスを最初の読み込みで生成しないことがあるので、書き出しは「クラスが効いたこと」を番人にして再読み込みする。`NODE_ENV` が `test` / `production` だと生成されない。
 - 後処理が XML を直接触るので、python-pptx で読めるだけでは足りず、OPC 整合チェッカ（Override・rels・id の突き合わせ）を自前で持って CI で回す。
 - PptxGenJS の版を上げるときは、後処理が前提にしている出力の形（id の採番、Content_Types の書き方、ノートの CRLF）が変わっていないかを受入テストで確かめる。
 - 一方向なので、PowerPoint で直した内容を残したい人は、Slidev 側を直して書き出し直す。設計文書 `wip/design/native-export.md` と `ppt-components.md` がこの決定の上に立つ。
