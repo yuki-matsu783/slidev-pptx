@@ -115,9 +115,9 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 
 1. xmldom の往復: バイト列は同じにならない（空要素が `<x/>` に畳まれ、属性の改行が詰まり、テキストの CRLF が LF になる）。DOM としては等価で、2 回目以降は冪等（`tests/patch/pipeline.test.ts`）
 2. コードの行頭の空白: `<a:t>` に保たれる（`"  return a"` が convert と e2e の両方で一致）
-3. 空 placeholder を消したスライドの PowerPoint 実機: **未確認**（Windows が要る。人のレビューで）
+3. 空 placeholder を消したスライドの PowerPoint 実機: **確認済み**（2026-09-13、利用者が Windows の PowerPoint で `slides.md` の書き出し 13 枚を開き、「修復」は出ず、編集もできた）
 4. `getComputedStyle` のコスト: 12 枚のデッキで `page.evaluate(collect)` は体感 1 秒未満。別計測はしていない
-5. `omitBackground`: 置き換え画像は撮れているが、祖先の塗りが透けるかは**未確認**（plain.md の置き換え要素は白背景の上にあるため見分けが付かない）
+5. `omitBackground`: 置き換え画像は撮れていて PowerPoint でも開ける（3 と同じ確認）。祖先の塗りが透けるかは**未確認**（plain.md も slides.md も置き換え要素が白背景の上にあるため見分けが付かない）
 6. spTree の順 = add した順、自動追加 placeholder は末尾: 表・画像・図形が混ざるスライドでも成立（`tests/build/convert.test.ts` の「spTree の図形数」）
 7. `margin` の並び: 4.0.1 でも `[l, r, b, t]`（`tests/fixtures/gen-pptx.test.ts`）
 
