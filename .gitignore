@@ -148,3 +148,6 @@ vite.config.ts.timestamp-*
 # ccnavi が hook のたびに書く判定の記録とセッションの控え
 /.ccnavi/log.jsonl
 /.claude/ccnavi/state/
+
+# 作業ツリーの置き場。中身は各ブランチが持つ
+/.claude/worktrees/
