@@ -52,7 +52,7 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - `assignNames(elements, confirmedRoles: Map<id, 'title' | 'body' | 'body2'>, hasBackgroundDim)` → `string[]`。`Placeholder N` の N は spTree の 1 始まりの位置
 - `resolveLayout(slideIndex, data, layoutNames: string[])` → レイアウト名
 - `emu(px, canvas)` `pt(px, canvas)` `inch(px, canvas)` `textMargin(inset, canvas)` `cellMargin(inset, canvas)` `toDashType(dash)`
-- `defineMasters` は `LAYOUTS` の写しを PptxGenJS に渡す（`createSlideMaster` が options を破壊するため）
+- `defineMasters` は `LAYOUTS` の複製を PptxGenJS に渡す（`createSlideMaster` が options を破壊するため）
 - `sanitizeXmlText` は XML 1.0 で合法な DEL / C1（0x7F–0x9F）も落とす
 - `notesText` は字下げ後の `- ` も `• ` にし、CRLF を LF にし、`undefined` を空文字にする
 - `findRelByType` は `slideLayout` のような短い名前でも完全な URI でも引ける
@@ -62,7 +62,7 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - `collect` は 1 関数の中に閉じる（Playwright は関数を文字列化して渡すので、モジュール先頭の定数やヘルパを参照できない）
 - `Capture.canvas.height` は `.print-slide-container` の rect のまま（551〜552。丸め規則は設計に無い）
 - `dropped['code-highlight']` の単位（ブロックか行か）は設計に無いので、検査は下限だけ見る
-- e2e の viewport は Slidev と同じ「980 × 552 × 枚数」。待機列は `native-export.md` §1.2 を写し、UnoCSS の遅延注入を待つ段（`.slidev-layout` の padding が効く + `<style>` の長さが 500 ms 動かない）を足した（`tests/e2e/helpers.ts`）
+- e2e の viewport は Slidev と同じ「980 × 552 × 枚数」。待機列は `native-export.md` §1.2 を再現し、UnoCSS の遅延注入を待つ段（`.slidev-layout` の padding が効く + `<style>` の長さが 500 ms 動かない）を足した（`tests/e2e/helpers.ts`）
 - xmldom は XML の行末正規化で `<a:t>` の CRLF を LF にする。後処理 5 の区切りは `\r\n | \r | \n` のどれでも
 - 往復の「等価」= 要素名・属性の集合・テキスト（行末を LF に揃える）が再帰的に同じ。空白だけのテキストノード・コメント・XML 宣言は見ない（`tests/patch/pipeline.test.ts` の `firstDifference`）
 - e2e の待機は、デッキ由来のクラスが UnoCSS で生成されたことを確認してから測る（`plain.md` は `.pt-12` の `paddingTop: 48px` で確認する）。Slidev 自身の規則（`px-14`）はファイル変換時に展開されるので、生成の確認には使えない。生成が来ない run は 30 秒で落ちる（黙って誤った値を測らない）
@@ -95,7 +95,7 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - native-export.md §4.4 / §6: ノートの run は PptxGenJS が `lang="en-US"` で出し、`--lang` は効かない（`addNotes` に lang の口が無い）
 - native-export.md §4.1: 線（`hr` と `PptShape type="line"`）は端点をキャンバスの中に寄せる。C9 は負の `cx cy x y` を error にする（PptxGenJS に負のインチを渡すと `cx="-113758675200"` のような値が出る。実測）
 - native-export.md §4.2: 同じ `roleHint` の枠が 2 つあると `<p:ph idx>` が重複して C12 で落ちる。2 つ目以降は自由配置にして `W-LAYOUT`
-- ppt-components.md §1.3: `PptShape` の `align` / `valign` の既定は `center` / `middle`（設計表の「PptText と同じ」より PowerPoint 流が妥当）。`padding` prop（既定 `[0, 8, 0, 8]` px）を足し、図形の中の文字の余白を PPTX の inset に写す。SVG で描く図形の形は PowerPoint の preset の既定 adj とは別物（近似）。`type="line"` の slot は描かない
+- ppt-components.md §1.3: `PptShape` の `align` / `valign` の既定は `center` / `middle`（設計表の「PptText と同じ」より PowerPoint 流が妥当）。`padding` prop（既定 `[0, 8, 0, 8]` px）を足し、図形の中の文字の余白を PPTX の inset に反映する。SVG で描く図形の形は PowerPoint の preset の既定 adj とは別物（近似）。`type="line"` の slot は描かない
 - ppt-components.md §1.5: `PptTable` の `header: false` は slot の Markdown 表の `thead` を消せない（`headerRows` は常に `thead > tr` の数で、収集器は `opts.header` を読まない）
 - ppt-components.md §1: PPT 部品と `zoom` の組み合わせは未定義（`data-ppt-box` / `padding` / `radius` は props の生 px、実測は zoom 済み）
 - native-export.md §5.2: placeholder の固定位置は、その下の自由配置の要素（コード枠・表・画像）と重なる。見た目は空欄だが PowerPoint で下の要素を掴みにくい

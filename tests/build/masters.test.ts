@@ -103,7 +103,7 @@ describe('build/masters: defineMasters の出力', () => {
     expect(Math.abs(xb * 2 - xa)).toBeLessThanOrEqual(2)
   })
 
-  it('defineMasters は LAYOUTS を書き換えない（PptxGenJS の createSlideMaster は渡した options を破壊するので、写しを渡す）', async () => {
+  it('defineMasters は LAYOUTS を書き換えない（PptxGenJS の createSlideMaster は渡した options を破壊するので、複製を渡す）', async () => {
     const before = JSON.stringify(LAYOUTS)
     const pptx = new PptxGenJS(); pptx.layout = 'LAYOUT_WIDE'
     defineMasters(pptx, 980)

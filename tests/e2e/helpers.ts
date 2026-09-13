@@ -33,7 +33,7 @@ export async function startSlidev(entry: string): Promise<Running> {
 }
 
 /**
- * 設計 §1.2 の待機列を写す: [data-slidev-no] の出現 → .slidev-slide-loading の消滅 → [data-waitfor] →
+ * 設計 §1.2 の待機列を再現する: [data-slidev-no] の出現 → .slidev-slide-loading の消滅 → [data-waitfor] →
  * mermaid の svg → networkidle。viewport は Slidev の exportSlides と同じ「幅 × 高さ×枚数」。
  */
 export interface ReadyCheck {

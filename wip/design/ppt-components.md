@@ -68,7 +68,7 @@ Capture: `kind: 'shape'`（`line` は `kind: 'line'`）。`rotate` があると�
 | `alt` | `string` | `''` | 代替文字。PPTX の `descr` に入れる（PptxGenJS `altText`） |
 | `fit` | `'contain' \| 'cover' \| 'fill'` | `'contain'` | 枠の中での収め方。CSS `object-fit` と PptxGenJS `sizing.type` に同じ値を渡す |
 
-描画は `<img>` に `object-fit: fit`。Capture は `kind: 'image'`、`src` は絶対 URL に解決したもの（Node が fetch。SVG は Node が撮影に切り替える）。PPTX 側は `contain` / `cover` だけ `sizing` に写し、`fill` は `sizing` 無し（native-export.md §4.3。`type: 'fill'` を渡すと `write()` が落ちる）。
+描画は `<img>` に `object-fit: fit`。Capture は `kind: 'image'`、`src` は絶対 URL に解決したもの（Node が fetch。SVG は Node が撮影に切り替える）。PPTX 側は `contain` / `cover` だけ `sizing` に変換し、`fill` は `sizing` 無し（native-export.md §4.3。`type: 'fill'` を渡すと `write()` が落ちる）。
 
 `fit` を持たせて `<img>` そのままにしない。
 - 得るもの: 写真を枠に合わせて切る書き方が Slidev と PPTX で同じになる。
@@ -142,7 +142,7 @@ JSON にできない props は無いので、属性を選ぶ。
 | 10 | `hr` | 線要素（実測の上辺、computed `border-top-color`） |
 | 11 | `h1`–`h6` `p` `ul` `ol` | 流し込みブロック（§3.1） |
 | 12 | `div` `section` `article` `main` `aside` `header` `footer` `span` `figure` で、**装飾を持たない** | 透明な入れ物。中を歩く（`.col-left` `.col-right` もここ）。**子に可視のテキストノードや inline 要素を直接持つなら、文書順に、連続する inline の連なりごとに 1 つの `plain` 段落として流し込みブロックに数える**（ブロックの子が間に入れば、そこで連なりが切れる。markdown-it の HTML ブロックは `<p>` に包まれない。`slides.md` の `<span>Space / → で次へ</span>` や `<div v-click>クリックのたびに…</div>` がこれ） |
-| 13 | 12 のタグで装飾を持ち、**装飾を持たない入れ物（12）だけを通って**到達する子孫が 11・裸のテキスト・inline 要素だけ（子が無い場合も含む。ただし 4 で先に拾われる） | 自前のテキスト枠（区切りブロック）。中の入れ物は透明に抜けて段落になる。装飾は `frame` に写し、写せないものは `W-CSS` |
+| 13 | 12 のタグで装飾を持ち、**装飾を持たない入れ物（12）だけを通って**到達する子孫が 11・裸のテキスト・inline 要素だけ（子が無い場合も含む。ただし 4 で先に拾われる） | 自前のテキスト枠（区切りブロック）。中の入れ物は透明に抜けて段落になる。装飾は `frame` に変換し、変換できないものは `W-CSS` |
 | 14 | 12 のタグで装飾を持ち、子孫に 3–10 か 13（装飾つきの入れ物）がある | 装飾を `W-CSS` で捨てて、透明な入れ物として中を歩く |
 | 15 | それ以外（`button` `input` `details` `kbd` を含む未知タグ、Vue 部品が描く任意の要素）。`kbd` は inline で現れたときは §3.4 の run になり、ブロックとして現れたときだけここ | 画像への置き換え、`reason: 'unknown-element'` |
 
@@ -161,7 +161,7 @@ JSON にできない props は無いので、属性を選ぶ。
 - `box = elementRect − containerRect`。`getBoundingClientRect()` は変換後の値を返すので、`.slidev-page` に `scale`（frontmatter `zoom`）があっても **rect はそのままキャンバス px**（`SlideWrapper.vue` は幅を `100% / zoom` に広げてから `scale` で縮めている）。
 - 逆に **`getComputedStyle` から取る長さ**（`font-size` `line-height` `margin` `padding` `border-width` `border-radius` `letter-spacing`）は変換前の値なので、`zoom` を**掛ける**。
 - 回転した要素（CSS `transform: rotate`）は rect が回転後の外接矩形になる。PPT 部品以外の回転は再現せず `W-CSS`（`box` は外接矩形のまま）。`PptShape rotate` は §1.3 の方法で回転前の枠を使う。
-- 流し込みブロックの枠（§3.1）は、含むブロックの border-box の和集合（左端の最小、右端の最大、最初の上端、最後の下端）。段落の margin は枠に入れず、`spaceBefore/After` に写す。
+- 流し込みブロックの枠（§3.1）は、含むブロックの border-box の和集合（左端の最小、右端の最大、最初の上端、最後の下端）。段落の margin は枠に入れず、`spaceBefore/After` に変換する。
 - `position: fixed` の要素はコンテナ基準になる（`translate-0` のため）。`fixed` を使った部品も同じ式で測れる。
 
 ---
@@ -173,14 +173,14 @@ JSON にできない props は無いので、属性を選ぶ。
 連続する流し込みブロック（`h1`–`h6` `p` `ul` `ol`、および 2.2 の 13 の中身）を 1 つのテキスト枠にまとめる。
 区切りブロック（表・コードブロック・引用・画像・置き換え・PPT 部品・装飾つきの箱）が来たら枠を閉じ、次の流し込みブロックから新しい枠を開く。
 
-`roleHint`（候補）の決め方。収集器は DOM の事実だけを写し、placeholder に入れるかどうかは Node が決める（native-export.md §4.2。収集器はレイアウト名も対応表も知らない）:
+`roleHint`（候補）の決め方。収集器は DOM の事実だけを記録し、placeholder に入れるかどうかは Node が決める（native-export.md §4.2。収集器はレイアウト名も対応表も知らない）:
 - スライドの中で文書順に最初の `h1` か `h2` で、根（または `.col-left`）から**装飾を持たない入れ物（§2.2 の 12）だけを通って**到達するもの → `title` 候補。この見出しだけで 1 枠。theme-default の `cover` と client の `center` は slot を `div.my-auto` で包むので、「直下」に限ると表紙の見出しが候補にならない。
 - **`title` の直後に、区切りブロックを挟まずに**開く枠（同じ領域）→ `body` 候補。間に区切りブロックがあれば `body` 候補は無い（placeholder の固定位置に飛んで、実測配置の要素と重なるため）。
 - `.col-right` の最初の要素が流し込みブロックなら、その枠 → `body2` 候補。最初の要素が区切りブロックなら右列に候補は無い。
 - それ以外の枠には `roleHint` を付けない（自由配置）。
 - Node 側: レイアウトが対応表に無い（`blank`）か、対応表のそのレイアウトに同名の placeholder が無ければ、候補は捨てて自由配置にする。
 
-- 得るもの: 収集器が「測って写す」に保たれ、対応表の変更が Node に閉じる。
+- 得るもの: 収集器が「測って記録する」に保たれ、対応表の変更が Node に閉じる。
 - 失うもの: Capture を見ただけでは placeholder に入るか分からない。受入テストの fixture は Capture と `options.data` 相当を対で持つ。
 
 親チケットの「見出しはタイトル枠」は主見出し 1 つを指すと解した。2 つ目以降の見出しと h3 以降は、枠の中の見出し段落になる。
@@ -268,7 +268,7 @@ h2 → title 候補 / p → body 候補 / div.mt-6 > Counter(button) → image(u
 ### 3.7 引用
 
 - `blockquote` の中の `p` を段落に。`frame.fill` = computed 背景色、`frame.inset` = padding、`frame.radius`。
-- Slidev の左の縦線（`border-l`）は写さない（PptxGenJS の `line` は 4 辺共通）。`W-CSS` は出さず `Report.dropped['blockquote-border']` に件数を出す。
+- Slidev の左の縦線（`border-l`）は出さない（PptxGenJS の `line` は 4 辺共通）。`W-CSS` は出さず `Report.dropped['blockquote-border']` に件数を出す。
 - 得るもの: 引用のたびに同じ警告が出ない。
 - 失うもの: 縦線が消えたことは件数でしか分からない。縦線を出したければ、引用の左に `line` 要素を 1 本足す変換を後で入れる。
 

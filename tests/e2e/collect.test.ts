@@ -78,7 +78,7 @@ describe('collect: 箇条書きと run（§3.2、§3.4）', () => {
   it('入れ子は level 1', () => {
     expect(body.paragraphs.find((p) => p.level === 1)?.kind).toBe('bullet')
   })
-  it('strong / em / code / a / del / u / sub / sup / mark が run に写る', () => {
+  it('strong / em / code / a / del / u / sub / sup / mark が run に反映される', () => {
     const runs = body.paragraphs.flatMap((p) => p.runs)
     expect(runs.find((r) => r.text === '太字')?.bold).toBe(true)
     expect(runs.find((r) => r.text === '斜体')?.italic).toBe(true)
@@ -271,7 +271,7 @@ describe('collect: zoom と はみ出し（§2.3、§2.2 の 1）', () => {
     expect(title.box.x).toBeCloseTo(56 * 0.8, 0)
     expect(title.paragraphs[0].runs[0].size).toBeCloseTo(30 * 0.8, 1)
   })
-  it('はみ出した箱（装飾つき = 規則 13 の独立した枠）は測ったままの負の座標で写す（寄せるのは Node）。完全に外は W-HIDDEN、opacity 0 も W-HIDDEN', () => {
+  it('はみ出した箱（装飾つき = 規則 13 の独立した枠）は測ったままの負の座標で記録する（寄せるのは Node）。完全に外は W-HIDDEN、opacity 0 も W-HIDDEN', () => {
     const s = slide(S.offslide)
     const left = texts(s).find((t) => flat(t).includes('左にはみ出した'))!
     expect(left.box.x).toBeLessThan(0)

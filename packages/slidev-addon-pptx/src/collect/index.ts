@@ -570,7 +570,7 @@ export function collect(): Capture {
       }
       const d = decorOf(el)
       const frame: FrameStyle = { inset: d.inset }
-      // 塗りと線は props（opts）を正とし、無ければ computed から（部品は props を CSS にも写しているので同じ値になる）
+      // 塗りと線は props（opts）を正とし、無ければ computed から（部品は props を CSS にも反映しているので同じ値になる）
       if (typeof opts.fill === 'string' && opts.fill !== 'none') frame.fill = { color: hex(opts.fill as string) }
       else if (d.fill && opts.fill !== 'none') frame.fill = d.fill
       if (opts.line && opts.line !== 'none') {

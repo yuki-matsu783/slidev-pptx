@@ -1,4 +1,4 @@
-// 座標の換算（native-export.md §4.1）、margin の並べ替え（§4.2、§4.3）、dash の写し（§4.3）
+// 座標の換算（native-export.md §4.1）、margin の並べ替え（§4.2、§4.3）、dash の変換（§4.3）
 import type { Box, Canvas, Dash } from '../types.ts'
 
 /** LAYOUT_WIDE の幅（EMU）。定数はこの 1 つから導く */

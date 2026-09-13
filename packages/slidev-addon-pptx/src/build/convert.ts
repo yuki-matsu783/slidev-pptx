@@ -43,7 +43,7 @@ const OFFSLIDE_WARN_PX = 5
 const DIM_TRANSPARENCY = 55
 
 export async function build(input: Capture, data: DeckData, opts: BuildOptions): Promise<BuildResult> {
-  // 入力を壊さない（リンクの写像などで書き換えるため写しを取る）
+  // 入力を壊さない（リンクの番号の変換などで書き換えるため複製を取る）
   const capture: Capture = structuredClone(input)
   const canvas = capture.canvas
   const pptx = new PptxGenJS()
@@ -197,7 +197,7 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
     const nameOf = new Map<string, string>()
     for (const e of kept) nameOf.set(e.id, names[ni++])
 
-    // スライドへのリンクを PPTX の順番に写す（範囲外は外す）
+    // スライドへのリンクの番号を PPTX の順番に変換する（範囲外は外す）
     for (const e of kept) {
       e.link = mapLink(e.link, sc.no, e.id)
       const paragraphs = e.kind === 'text' || e.kind === 'shape' ? e.paragraphs : e.kind === 'table' ? e.rows.flat().flatMap((c) => c.paragraphs) : undefined
@@ -351,7 +351,7 @@ function linkProps(link: NonNullable<Run['link']>): PptxGenJS.HyperlinkProps {
 }
 
 function applyFrame(pptx: PptxGenJS, o: PptxGenJS.TextPropsOptions, frame: TextElement['frame'], canvas: Canvas): void {
-  // §4.2: frame.transparency は fill.transparency にだけ写す（run には収集時に掛け込んである）
+  // §4.2: frame.transparency は fill.transparency にだけ反映する（run には収集時に掛け込んである）
   if (frame.fill) {
     const t = frame.fill.transparency ?? frame.transparency
     o.fill = { color: hex(frame.fill.color), ...(t ? { transparency: Math.round(t) } : {}) }
@@ -377,7 +377,7 @@ function addShape(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: ShapeElement, box:
 
   const hasText = e.paragraphs?.some((p) => p.runs.some((r) => r.text.length))
   if (hasText) {
-    // 要素リンクは addText に渡すと rels に登録されない（rIdundefined）ので、全 run に写す（§4.3）
+    // 要素リンクは addText に渡すと rels に登録されない（rIdundefined）ので、全 run に付ける（§4.3）
     const runs = toRuns(e.paragraphs!, lang, canvas, e.link)
     // 自由配置なので objectName は効く（placeholder 指定のときだけ捨てられる）
     const o: PptxGenJS.TextPropsOptions = { ...common, shape: shapeType, valign: e.valign ?? 'middle', margin: textMargin(e.frame.inset, canvas), lang, fit: 'shrink' }

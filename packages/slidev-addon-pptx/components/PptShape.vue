@@ -28,7 +28,7 @@ const props = withDefaults(
     line?: string | LineProps
     radius?: number
     rotate?: number
-    /** 図形の中の文字の内側余白 px。PPTX の inset にも写す */
+    /** 図形の中の文字の内側余白 px。PPTX の inset にも反映する */
     padding?: number | [number, number, number, number]
     align?: 'left' | 'center' | 'right' | 'justify'
     valign?: 'top' | 'middle' | 'bottom'

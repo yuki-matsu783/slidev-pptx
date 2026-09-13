@@ -195,7 +195,7 @@ export interface Report {
   check: CheckResult[]
 }
 
-/** Node 側が `options.data` から使う部分（Slidev の SlidevData の写し。必要な項目だけ） */
+/** Node 側が `options.data` から使う部分（Slidev の SlidevData の抜粋。必要な項目だけ） */
 export interface DeckData {
   config?: { canvasWidth?: number; aspectRatio?: number; title?: string; author?: string; colorSchema?: string; transition?: string }
   slides: DeckSlide[]

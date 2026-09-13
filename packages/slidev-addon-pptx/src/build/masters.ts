@@ -61,7 +61,7 @@ export const LAYOUTS: Record<LayoutName, LayoutDef> = {
 }
 
 /**
- * 表の順で defineSlideMaster を呼ぶ。PptxGenJS の createSlideMaster は渡した options を破壊するので、写しを渡す。
+ * 表の順で defineSlideMaster を呼ぶ。PptxGenJS の createSlideMaster は渡した options を破壊するので、複製を渡す。
  * 座標は px → EMU（幅だけで換算。§4.1）
  */
 export function defineMasters(pptx: PptxGenJS, canvasWidth: number): void {

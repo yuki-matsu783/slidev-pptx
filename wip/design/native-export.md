@@ -34,12 +34,12 @@ pnpm export:pptx
 
 | 場所 | 役目 | 触ってよいもの |
 |---|---|---|
-| ブラウザ（収集） | DOM を歩き、位置・書式・中身を **Slidev キャンバス px** のまま JSON にする。要素の分類（ppt-components.md §2.2）と placeholder の候補（§3.1）は DOM の事実として写すが、レイアウト名と対応表に依る判断はしない | DOM、computed style、`data-ppt-*` 属性 |
+| ブラウザ（収集） | DOM を歩き、位置・書式・中身を **Slidev キャンバス px** のまま JSON にする。要素の分類（ppt-components.md §2.2）と placeholder の候補（§3.1）は DOM の事実として記録するが、レイアウト名と対応表に依る判断はしない | DOM、computed style、`data-ppt-*` 属性 |
 | Node（生成） | 単位の換算、レイアウト名の解決とレイアウト対応表、PptxGenJS の呼び出し、置き換え画像の取得、ノート | Capture、`options.data`、`options.utils`、PptxGenJS |
 | Node（後処理） | PptxGenJS が出せない・壊すものを ZIP の XML で直す | ZIP の中身だけ |
 | Node（検査） | 書き出したファイルの OPC 整合を点検する | ZIP の中身だけ（読むだけ） |
 
-- 得るもの: 収集は「測って写す」だけなので、ブラウザ側のコードに PptxGenJS もレイアウト表も持ち込まない。Capture を vitest の入力にすれば、生成と後処理をブラウザ無しで検査できる。
+- 得るもの: 収集は「測って記録する」だけなので、ブラウザ側のコードに PptxGenJS もレイアウト表も持ち込まない。Capture を vitest の入力にすれば、生成と後処理をブラウザ無しで検査できる。
 - 失うもの: 同じ内容を 2 つの型（DOM の形と Capture の形）で表すぶん、変換規則の変更は両側に及ぶ。
 
 ### 1.2 ブラウザの開き方
@@ -64,7 +64,7 @@ pnpm export:pptx
 チケットの成果物には「レイアウト名・ノート・要素の列」とあるが、**レイアウト名とノートは Capture に入れない**。
 どちらも DOM に無く（export モードでは `window.__slidev__` が無い。調査 §3）、Node 側の `options.data.slides[no-1]` から取れる。
 `export` 指定も Capture には残らず、収集時に `kind: 'image'` と `reason: 'explicit'` に解決される。
-- 得るもの: 収集器はブラウザで見えるものだけを写し、Node 側の情報を二重に持たない。
+- 得るもの: 収集器はブラウザで見えるものだけを記録し、Node 側の情報を二重に持たない。
 - 失うもの: Capture だけを見てもスライドのレイアウトが分からない。受入テストの fixture は Capture と `options.data` の相当物を対で持つ。
 
 ```ts
@@ -178,7 +178,7 @@ interface Warning {
 }
 ```
 
-- 得るもの: 型がそのまま受入テストの fixture になる。書式は run 単位で平坦なので、PptxGenJS の `TextProps[]` に 1:1 で写せる。
+- 得るもの: 型がそのまま受入テストの fixture になる。書式は run 単位で平坦なので、PptxGenJS の `TextProps[]` に 1:1 で変換できる。
 - 失うもの: 入れ子の HTML（span の中の span）を平坦化するとき、書式の継承を収集側で解く必要がある。computed style を run ごとに読むことで解決するが、要素数ぶん `getComputedStyle` を呼ぶので大きなデッキでは遅い（数百要素で 1 秒程度の見込み。要確認）。
 
 ---
@@ -223,7 +223,7 @@ XML は文字列置換ではなく DOM（`@xmldom/xmldom`）で触る。
 | 2 | `dropEmptyPlaceholders` | `ppt/slides/*.xml` | `<p:ph>` を持つ `<p:sp>` のうち `<a:t>` に文字が無いものを消す | 必須（`masterName` 付きスライドには未使用 placeholder が必ず足される。実測） |
 | 3 | `dedupeParagraphProps` | `ppt/slides/*.xml` `ppt/notesSlides/*.xml` | 各 `<a:p>` の `<a:pPr>` を先頭の 1 つだけ残す（2 つ目以降を消す。先頭の `<a:pPr>` が `<a:r>` の後ろにあれば最初の子に移す） | **必須**（PptxGenJS は run ごとに `<a:pPr>` を出し、`bullet` の無い run にも `<a:buNone/>` 付きの `<a:pPr>` を書く。太字やリンクを含む段落は必ず 2 つ以上になる。実測。`CT_TextParagraph` は先頭に高々 1 つ） |
 | 4 | `applyAutofitScale` | `ppt/slides/*.xml` | `ctx.autofit[no]` の図形名で `<p:sp>` を引き、`<a:bodyPr>` の**既存の** `<a:normAutofit>` に `fontScale` `lnSpcReduction` を足す（無ければ 1 つ作る。2 つにはしない） | 条件つき |
-| 5 | `splitNotesParagraphs` | `ppt/notesSlides/*.xml` | `<a:t>` の CRLF を `<a:p>` の区切りに割る。割って作る `<a:p>` には元の `<a:pPr>` を先頭に 1 つだけ写す（3 の後に走るので、C14 の不変条件を自分で守る） | 必須（PptxGenJS は 1 つの `<a:t>` に CRLF で詰める。実測） |
+| 5 | `splitNotesParagraphs` | `ppt/notesSlides/*.xml` | `<a:t>` の CRLF を `<a:p>` の区切りに割る。割って作る `<a:p>` には元の `<a:pPr>` を先頭に 1 つだけ複製する（3 の後に走るので、C14 の不変条件を自分で守る） | 必須（PptxGenJS は 1 つの `<a:t>` に CRLF で詰める。実測） |
 | 6 | `replaceMaster` | マスター・レイアウト・テーマ・各スライドの rels | **将来のマスター差し替えの継ぎ目**。今回は no-op。§5.4 | 継ぎ目 |
 | 7 | `rebuildContentTypes` | `[Content_Types].xml` | ZIP の実在パートから作り直す。`Default` は **ZIP に実在する拡張子**から（固定リストを持たない）、`Override` はパートの種類ごと | **必須**（実在しない `slideMasterN.xml` の Override が混ざる。実測） |
 
@@ -303,7 +303,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 
 | Capture | PptxGenJS | 単位 |
 |---|---|---|
-| `roleHint` があり、§5.1 で解いたレイアウトの対応表（§5.2）に同名の placeholder がある | `placeholder: roleHint`（座標は渡さない。レイアウトの値が勝つ）。**role の確定は Node の仕事**。収集器はレイアウト名も対応表も知らないので、候補（`roleHint`）だけを写す | |
+| `roleHint` があり、§5.1 で解いたレイアウトの対応表（§5.2）に同名の placeholder がある | `placeholder: roleHint`（座標は渡さない。レイアウトの値が勝つ）。**role の確定は Node の仕事**。収集器はレイアウト名も対応表も知らないので、候補（`roleHint`）だけを記録する | |
 | `roleHint` があるが対応表に無い（`blank`、`two-cols` 以外の `body2` など） | 自由配置に落とす。`blank` 以外なら `W-LAYOUT` に理由を添える（綴り違いの placeholder 名を PptxGenJS に渡すと `<p:ph>` の無い枠が左上に出る。実測） | EMU |
 | それ以外（自由配置） | `x y w h` | EMU |
 | `rotate` | `rotate` | 度 |
@@ -319,10 +319,10 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 | `Run.sup / sub` | `superscript` / `subscript` | |
 | `Run.transparency` | `transparency` | 0–100 |
 | `Run.charSpacing` | `charSpacing` | pt |
-| `frame.fill` `line` | `fill: { color, transparency }` `line: { color, width, dashType }`。Capture の `dash: 'dot'` は PptxGenJS の型に無いので `'sysDot'` に写す | `width` は pt |
+| `frame.fill` `line` | `fill: { color, transparency }` `line: { color, width, dashType }`。Capture の `dash: 'dot'` は PptxGenJS の型に無いので `'sysDot'` に変換する | `width` は pt |
 | `frame.radius` | `rectRadius` と `shape: 'roundRect'` | **インチ**（`inch(px)`。PptxGenJS は `adj = round(rectRadius × 914400 × 100000 / min(cx, cy))` で、EMU を渡すと桁あふれする） |
 | `frame.inset`（上右下左） | `margin: [左, 右, 下, 上]` | pt。**PptxGenJS 4.0.1 の実装は `[l, r, b, t]`**（`pptxgen.cjs.js` L5389-5392）。型定義のコメントは TRBL と書いてあるが実装と食い違う。並べ替えは `units.ts` の 1 関数に閉じる |
-| `frame.transparency` | `fill.transparency` にだけ写す。run の `transparency` は収集時に祖先の opacity を掛け込んであるので、ここで重ねると二重掛けになる | |
+| `frame.transparency` | `fill.transparency` にだけ反映する。run の `transparency` は収集時に祖先の opacity を掛け込んであるので、ここで重ねると二重掛けになる | |
 | `valign` | `valign` | |
 | 全枠 | `fit: 'shrink'`、`fontFace: <本文フォント>`、`lang: <§6>`、`isTextBox: true`（placeholder 以外）。`objectName` は渡さない（§3.2 変換 1 が付ける） | |
 
@@ -330,14 +330,14 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 
 | 種類 | 呼び出し |
 |---|---|
-| shape | 文字があれば `addText(paragraphs, { shape: ShapeType[shape], fill, line, rectRadius, rotate, x y w h })`、無ければ `addShape(ShapeType[shape], { fill, line, rectRadius, rotate, x y w h, hyperlink })`。`shape` と `fill` の同時指定は実測で `<a:prstGeom>` と塗りが両方出る。**要素リンクを `addText` に渡さない**: `addText` の `hyperlink` は run の分しか rels に登録せず、`<a:hlinkClick r:id="rIdundefined">` が出る（実測。C10 で必ず落ちる）。文字のある図形と、`a` で囲まれたテキスト枠の `link` は全 run の `hyperlink` に写す（下線つきになる） |
+| shape | 文字があれば `addText(paragraphs, { shape: ShapeType[shape], fill, line, rectRadius, rotate, x y w h })`、無ければ `addShape(ShapeType[shape], { fill, line, rectRadius, rotate, x y w h, hyperlink })`。`shape` と `fill` の同時指定は実測で `<a:prstGeom>` と塗りが両方出る。**要素リンクを `addText` に渡さない**: `addText` の `hyperlink` は run の分しか rels に登録せず、`<a:hlinkClick r:id="rIdundefined">` が出る（実測。C10 で必ず落ちる）。文字のある図形と、`a` で囲まれたテキスト枠の `link` は全 run の `hyperlink` に付ける（下線つきになる） |
 | line | `addShape(ShapeType.line, { x y w h, line: { color, width, dashType, beginArrowType, endArrowType }, flipV })`。`from/to` から `x y w h` と `flipV` を決める |
 | image | `addImage({ data: 'data:image/png;base64,…', x y w h, altText, sizing, hyperlink })`。`fit: 'contain' \| 'cover'` → `sizing: { type, w, h }`、`'fill'` と未指定 → `sizing` 無し（`type: 'fill'` を渡すと `addImage` は通るが `write()` が `TypeError` で落ちる。実測）。`addImage` の `hyperlink` は自前で rels を登録するので使える。URL は Node が fetch し、失敗したら `W-IMAGE` を出して灰色の矩形（`rect`）を置く |
 | image（SVG） | `src` の拡張子または `content-type` が SVG なら `addImage` に渡さず、その `<img>` を撮影に回す（`data-ppt-capture-id` を振って `locator.screenshot()`）。PptxGenJS の SVG 経路は `image-N.png` の中身に SVG を書くので壊れた PPTX になる（`addImageDefinition` の `isSvgPng`）。置き換え一覧に `reason: 'svg'` で載せる |
 | table | `addTable(rows, { x y w, colW: EMU[], rowH: EMU[] })`。セルは `{ text: TextProps[], options: { colspan, rowspan, fill, align, valign, border, margin } }`。`border` は **4 辺必ず埋める**（未指定の辺は PptxGenJS が `DEF_CELL_BORDER`（solid / 666666 / 1 pt）で補うので、線の無い辺を明示しないと罫線が増える。`undefined` があっても落ちはしない。実測）: `width: 0` → `{ type: 'none' }`、それ以外 → `{ type: 'solid', pt: pt(width), color }`。順序は **上右下左**（テキスト枠の `margin` と違う。実測）。`margin` は上右下左の pt。**上の値が 1 未満だと 4 辺ともインチ扱いになる**（PptxGenJS の `cellMargin[0] >= 1` の分岐）ので、上は 1 pt に切り上げる。空白の `hMerge/vMerge` は PptxGenJS が作る |
 | background | `slide.background = { color: backgroundColor }`。§5.5 の背景画像があれば `{ data }` |
 
-`dash` の写し（Capture の `'dot'` → PptxGenJS の `'sysDot'`、他はそのまま）は、テキスト枠・図形・線で共通に `units.ts` の `toDashType()` を使う。
+`dash` の変換（Capture の `'dot'` → PptxGenJS の `'sysDot'`、他はそのまま）は、テキスト枠・図形・線で共通に `units.ts` の `toDashType()` を使う。
 
 同じ画像を複数スライドで使うと、PptxGenJS は `path` 一致でしか重複を除かないので、data URL では毎回 `ppt/media` に入る。Node 側は fetch の結果を `src` でキャッシュして取得は 1 回にするが、ZIP には枚数ぶん入る。
 - 得るもの: 実装が単純。
@@ -587,7 +587,7 @@ packages/slidev-addon-pptx/
 | `[Content_Types].xml` の実在しない Override | 後処理 7 |
 | 画像 placeholder は未実装 | 画像は全て座標指定 `addImage`（§4.3） |
 | `write()` は無圧縮 | 後処理の再圧縮で DEFLATE |
-| 公開 API は `resolveOptions` `createServer` `parser` のみ | §1.2。`go()` は写す |
+| 公開 API は `resolveOptions` `createServer` `parser` のみ | §1.2。`go()` は自前で書く |
 | export モードでしか `/print` が無い | §1.2 |
 | レイアウト名の決定規則。**「DOM の class から読むほうが確実」** | §5.1。**この制約は調査の見立てが誤り。** `two-cols` の class は `two-columns`、`image-right` は `.slidev-layout.default` を内包するので、class から名前は決められない。Node 側で `getLayouts()` を使って解く。`wip/research/summary.md` §3 のこの 1 文の修正を親に依頼する（このチケットの `allow` は `wip/design/*` と `docs/adr/*` のみ） |
 | クリック数は描画後 | 今回は `?print=true` 1 枚で不要 |

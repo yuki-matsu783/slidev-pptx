@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// PPT 部品: 画像（wip/design/ppt-components.md §1.4）。`fit` は CSS の object-fit にそのまま。PPTX 側の写しは Node が決める。
+// PPT 部品: 画像（wip/design/ppt-components.md §1.4）。`fit` は CSS の object-fit にそのまま。PPTX 側への変換は Node が決める。
 import { computed } from 'vue'
 
 const props = withDefaults(

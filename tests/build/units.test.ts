@@ -1,4 +1,4 @@
-// 座標の換算（native-export.md §4.1）、margin の並べ替え（§4.2、§4.3）、dash の写し（§4.3）
+// 座標の換算（native-export.md §4.1）、margin の並べ替え（§4.2、§4.3）、dash の変換（§4.3）
 import { describe, expect, it } from 'vitest'
 import {
   SLIDE_W_EMU, SLIDE_W_IN, emu, pt, inch, clampBox, textMargin, cellMargin, toDashType,

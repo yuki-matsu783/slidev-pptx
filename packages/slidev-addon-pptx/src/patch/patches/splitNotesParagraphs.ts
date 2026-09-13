@@ -1,5 +1,5 @@
 // 後処理 5: ノートの <a:t> の改行（CRLF / CR / LF。DOM では行末正規化で LF）を <a:p> の区切りに割る
-// （native-export.md §3.2、§4.4）。割って作る <a:p> には元の <a:pPr> を先頭に 1 つだけ写す（C14 を保つ）。
+// （native-export.md §3.2、§4.4）。割って作る <a:p> には元の <a:pPr> を先頭に 1 つだけ複製する（C14 を保つ）。
 // 前提にする変換: 3（<a:pPr> は先頭に高々 1 つ）
 import { xmlPatch } from '../index.ts'
 import { elements, children } from '../zip.ts'
