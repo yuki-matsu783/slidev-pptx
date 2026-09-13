@@ -438,6 +438,10 @@ addons:
 
 <PptShape type="ellipse" name="text-ellipse" :x="30" :y="350" :w="220" :h="150" fill="#fecaca" line="#b91c1c" :size="14">楕円の文字の枠は内接する矩形。長い文は枠の中で折り返す</PptShape>
 <PptShape type="triangle" name="text-triangle" :x="280" :y="350" :w="220" :h="150" fill="#fecaca" line="#b91c1c" :size="14">三角の文字は下半分</PptShape>
-<PptShape type="wedgeRoundRectCallout" name="text-callout" :x="530" :y="350" :w="180" :h="110" fill="#fecaca" line="#b91c1c" :size="14" valign="top">吹き出し（上寄せ）</PptShape>
-<PptShape type="ellipse" name="text-ellipse-auto" :x="740" :y="350" :w="220" fill="#fecaca" line="#b91c1c" :size="14">h なしは枠全体<br>高さは中身の 2 行で決まる</PptShape>
+<PptShape type="wedgeRoundRectCallout" name="text-callout" :x="530" :y="350" :w="180" :h="90" fill="#fecaca" line="#b91c1c" :size="14" valign="top">吹き出し（上寄せ）</PptShape>
+<PptShape type="ellipse" name="text-ellipse-auto" :x="740" :y="350" :w="220" fill="#fecaca" line="#b91c1c" :size="14">w だけは枠全体<br>高さは中身の 2 行で決まる</PptShape>
 <PptShape type="hexagon" name="rot-wauto" :x="760" :y="440" :h="60" :rotate="30" fill="#fecaca" line="#b91c1c" :size="14">回転と実測の幅</PptShape>
+<PptShape type="star4" name="honly-star4" :x="530" :y="470" :h="40" fill="#dbeafe" line="#1d4ed8" :size="10">四つ星の中の長い文</PptShape>
+<PptShape type="pie" name="honly-pie" :x="670" :y="478" :h="24" fill="#dbeafe" line="#1d4ed8" :size="10">あ</PptShape>
+
+<PptText :x="30" :y="512" :w="480" :size="11" align="left">3 行目: 文字の枠（楕円は内接矩形、三角は下半分）は w と h の両方があるときだけ。w だけ・h だけ（右の楕円・六角形・四つ星・扇形）は枠全体に置き、幅や高さは中身で決まる</PptText>

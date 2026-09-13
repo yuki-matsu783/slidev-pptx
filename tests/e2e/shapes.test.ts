@@ -9,7 +9,7 @@ import type { Browser, Page } from 'playwright-chromium'
 import { collect } from '../../packages/slidev-addon-pptx/src/collect/index'
 import { exportPptx } from '../../packages/slidev-addon-pptx/src/export'
 import { check } from '../../packages/slidev-addon-pptx/src/opc/check'
-import { PRESET_NAMES } from '../../packages/slidev-addon-pptx/src/shapes/geometry'
+import { PRESET_NAMES, evalPreset } from '../../packages/slidev-addon-pptx/src/shapes/geometry'
 import type { Capture, Element, LineElement, Report, ShapeElement } from '../../packages/slidev-addon-pptx/src/types'
 import { els, openPptx, shapeNamed } from '../helpers/pptx'
 import type { OpenedPptx } from '../helpers/pptx'
@@ -158,6 +158,71 @@ describe('collect: 図形 187 種', () => {
     expect(e.rotate).toBe(30)
     expect(e.box).toMatchObject({ x: 760, y: 440, h: 60 })
     expect(Math.abs(e.box.w - dom.w)).toBeLessThanOrEqual(0.5)
+  })
+
+  const H_ONLY = ['honly-star4', 'honly-pie', 'rot-wauto']
+
+  it('h だけ指定した図形: 文字は枠全体に置き（margin なし）、幅は文字の幅程度に収まる', async () => {
+    for (const n of H_ONLY) {
+      const dom = await offsetOf(n)
+      expect(dom.w, n).toBeGreaterThan(0)
+      expect(dom.w, n).toBeLessThan(200)
+      expect(sample(n).box.w, n).toBeLessThan(200)
+      const margin = await page.evaluate((name) => document.querySelector<HTMLElement>(`[data-ppt-name="${name}"] > .ppt-shape-text`)!.style.margin, n)
+      expect(margin, n).toBe('')
+    }
+  })
+
+  it('h だけ指定した図形: 1 秒おいて測っても幅と SVG の大きさが変わらない（測り直しが循環しない）', async () => {
+    const read = () =>
+      page.evaluate((names) => names.map((n) => {
+        const el = document.querySelector<HTMLElement>(`[data-ppt-name="${n}"]`)!
+        const svg = el.querySelector('svg.ppt-shape-svg')!
+        return [n, el.offsetWidth, el.offsetHeight, svg.getAttribute('width'), svg.getAttribute('height'), el.dataset.pptBox]
+      }), H_ONLY)
+    const before = await read()
+    await page.waitForTimeout(1000)
+    expect(await read()).toEqual(before)
+  })
+
+  it('ブラウザで ResizeObserver loop の警告・エラーが出ない', async () => {
+    // openPrint の中で作るページには読み込み前に聞き耳を立てられないので、別のページで開き直して数える
+    const context = await browser.newContext({ viewport: { width: 980, height: 552 * SLIDE_COUNT } })
+    const p = await context.newPage()
+    const messages: string[] = []
+    p.on('console', (m) => messages.push(m.text()))
+    p.on('pageerror', (e) => messages.push(e.message))
+    await p.addInitScript(() => {
+      window.addEventListener('error', (e) => console.error(`window error: ${e.message}`))
+    })
+    try {
+      await p.goto(`${server.base}/print?print=true`, { waitUntil: 'networkidle' })
+      await p.waitForSelector('[data-ppt-name="honly-star4"]', { timeout: 60_000 })
+      await p.waitForTimeout(3000)
+    } finally {
+      await context.close()
+    }
+    expect(messages.filter((m) => /ResizeObserver loop/.test(m))).toEqual([])
+  })
+
+  it('w と h の両方がある図形は、文字の div が定義の文字の枠（textRect）の中に入る', async () => {
+    for (const n of ['text-ellipse', 'text-triangle', 'text-callout', 'adj-rightArrow']) {
+      const e = sample(n)
+      const rect = evalPreset(e.shape, e.box.w, e.box.h, e.adj).textRect
+      const div = await page.evaluate((name) => {
+        const t = document.querySelector<HTMLElement>(`[data-ppt-name="${name}"] > .ppt-shape-text`)!
+        return { l: t.offsetLeft, t: t.offsetTop, r: t.offsetLeft + t.offsetWidth, b: t.offsetTop + t.offsetHeight }
+      }, n)
+      // 左右は枠いっぱいに広がり、上下は中身の高さで枠の中に寄る（offset* は整数なので 1 px の誤差を許す）
+      expect(Math.abs(div.l - rect.l), `${n} l`).toBeLessThanOrEqual(1)
+      expect(Math.abs(div.r - rect.r), `${n} r`).toBeLessThanOrEqual(1)
+      expect(div.t, `${n} t`).toBeGreaterThanOrEqual(rect.t - 1)
+      expect(div.b, `${n} b`).toBeLessThanOrEqual(rect.b + 1)
+    }
+    // 三角の文字の枠は下半分なので、左右とも枠の端から離れる（枠全体に置いていないことの確認）
+    const tri = evalPreset('triangle', 220, 150).textRect
+    expect(tri.l).toBeGreaterThan(1)
+    expect(tri.t).toBeGreaterThan(1)
   })
 })
 
