@@ -14,6 +14,8 @@ import { notesText } from './notes.ts'
 import { resolveLayout } from './layout.ts'
 import { defineMasters, masterFor, hasPlaceholder, placeholderBox } from './masters.ts'
 import type { LayoutName } from './masters.ts'
+import { isPreset } from '../shapes/geometry.ts'
+import { PRESETS } from '../shapes/presets.ts'
 
 export interface Asset {
   data: string
@@ -56,7 +58,7 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
   const report: Report = emptyReport(opts.output ?? '')
   report.slidev = opts.slidevVersion ?? ''
   report.pptxgenjs = pptxVersion()
-  const ctx: PatchContext = { capture, shapeNames: {}, autofit: {}, report }
+  const ctx: PatchContext = { capture, shapeNames: {}, autofit: {}, adjust: {}, report }
   const drop = (key: string) => {
     report.dropped[key] = (report.dropped[key] ?? 0) + 1
   }
@@ -212,7 +214,7 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
           addText(pptx, slide, e, box, roles.get(e.id), master, name, lang, canvas, sc, pptxNo, ctx)
           break
         case 'shape':
-          addShape(pptx, slide, e, box, name, lang, canvas)
+          addShape(pptx, slide, e, box, name, lang, canvas, sc, pptxNo, ctx)
           break
         case 'line':
           addLine(pptx, slide, e, name, canvas)
@@ -365,15 +367,38 @@ function applyFrame(pptx: PptxGenJS, o: PptxGenJS.TextPropsOptions, frame: TextE
 
 // ---------------------------------------------------------------- 図形・線
 
-function addShape(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: ShapeElement, box: Box, name: string, lang: string, canvas: Canvas): void {
-  const shapeType = (pptx.ShapeType as unknown as Record<string, PptxGenJS.SHAPE_NAME>)[e.shape] ?? pptx.ShapeType.rect
+function addShape(
+  pptx: PptxGenJS,
+  slide: PptxGenJS.Slide,
+  e: ShapeElement,
+  box: Box,
+  name: string,
+  lang: string,
+  canvas: Canvas,
+  sc: SlideCapture,
+  pptxNo: number,
+  ctx: PatchContext,
+): void {
+  // prst 名は PptxGenJS の ShapeType を通さずそのまま渡す（'<a:prstGeom prst="' + shape + '">' と書かれる）。
+  // ShapeType に無いコネクタ 9 種や、綴りを誤っている foldedCorner もこれで出る
+  const preset = isPreset(e.shape)
+  if (!preset) ctx.report.warnings.push({ code: 'W-SHAPE', elementId: e.id, slide: sc.no, name, message: `図形 "${e.shape}" は PowerPoint の図形に無いので rect にした` })
+  const shapeType = (preset ? e.shape : pptx.ShapeType.rect) as PptxGenJS.SHAPE_NAME
+  const adjust = shapeAdjust(e, preset ? e.shape : 'rect', sc, name, ctx)
+  if (adjust) (ctx.adjust[pptxNo] ??= {})[name] = adjust
+
   const common: PptxGenJS.ShapeProps = { ...boxProps(box, canvas), objectName: name }
   if (e.frame.fill) common.fill = { color: hex(e.frame.fill.color), ...(e.frame.fill.transparency ? { transparency: Math.round(e.frame.fill.transparency) } : {}) }
   else common.fill = { color: 'FFFFFF', transparency: 100 }
   if (e.frame.line) common.line = { color: hex(e.frame.line.color), width: pt(e.frame.line.width, canvas), dashType: toDashType(e.frame.line.dash) }
   else common.line = { color: '000000', width: 0, transparency: 100 }
-  if (e.frame.radius && e.shape === 'roundRect') common.rectRadius = inch(e.frame.radius, canvas)
+  if (e.arrow?.head) common.line.beginArrowType = arrow(e.arrow.head)
+  if (e.arrow?.tail) common.line.endArrowType = arrow(e.arrow.tail)
+  // 調整値の adj は後処理が avLst を書き直すので、rectRadius の gd は出さない
+  if (e.frame.radius && e.shape === 'roundRect' && adjust?.adj === undefined) common.rectRadius = inch(e.frame.radius, canvas)
   if (e.rotate) common.rotate = e.rotate
+  if (e.flipH) common.flipH = true
+  if (e.flipV) common.flipV = true
 
   const hasText = e.paragraphs?.some((p) => p.runs.some((r) => r.text.length))
   if (hasText) {
@@ -386,6 +411,26 @@ function addShape(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: ShapeElement, box:
     if (e.link) common.hyperlink = linkProps(e.link)
     slide.addShape(shapeType, common)
   }
+}
+
+/**
+ * 調整値を定義（prst の avLst）の名前に絞り、整数に丸める。PptxGenJS は avLst を rectRadius と angleRange でしか
+ * 書けないので、ここで ctx.adjust に積み、後処理 applyShapeAdjust が <a:avLst> を書き直す。
+ * 定義に無い名前と数でない値は捨てて W-SHAPE。残りが無ければ undefined
+ */
+function shapeAdjust(e: ShapeElement, prst: string, sc: SlideCapture, name: string, ctx: PatchContext): Record<string, number> | undefined {
+  if (!e.adj) return undefined
+  const known = new Set(PRESETS[prst].av.map(([n]) => n))
+  const out: Record<string, number> = {}
+  const dropped: string[] = []
+  for (const [k, v] of Object.entries(e.adj)) {
+    if (known.has(k) && Number.isFinite(v)) out[k] = Math.round(v)
+    else dropped.push(k)
+  }
+  if (dropped.length) {
+    ctx.report.warnings.push({ code: 'W-SHAPE', elementId: e.id, slide: sc.no, name, message: `図形 "${prst}" の調整値 ${dropped.join(', ')} は定義に無いか数でないので捨てた` })
+  }
+  return Object.keys(out).length ? out : undefined
 }
 
 function addLine(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: LineElement, name: string, canvas: Canvas): void {
