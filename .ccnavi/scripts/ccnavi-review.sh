@@ -245,7 +245,12 @@ api_failed() {
 pages() {
 	rel="$1"
 	page=1
-	sep=$(case "$rel" in *\?*) echo '&' ;; *) echo '?' ;; esac)
+	# `$( )` の中に 1 行の case を書くと、macOS の /bin/sh（bash 3.2）はパターンの `)` を
+	# `$( )` の閉じと読み違えて構文エラーになる。代入を case の外に出さない。
+	case "$rel" in
+	*\?*) sep='&' ;;
+	*) sep='?' ;;
+	esac
 	all='[]'
 	while :; do
 		chunk=$(api GET "$rel${sep}per_page=100&page=$page")
