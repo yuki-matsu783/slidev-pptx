@@ -77,7 +77,8 @@ const style = computed(() => {
 
 const opts = computed(() =>
   JSON.stringify({
-    valign: props.valign,
+    // valign は h を指定したときだけ CSS に効く。効かないときは載せない（Slidev と PPTX の見た目を揃える）
+    valign: props.h !== undefined ? props.valign : undefined,
     align: props.align,
     fill: props.fill,
     line: props.line,

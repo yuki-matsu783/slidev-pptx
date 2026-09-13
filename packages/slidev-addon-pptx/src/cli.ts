@@ -1,6 +1,6 @@
 // CLI（native-export.md §7）。exit code: 0 成功 / 1 書き出し失敗または OPC error（--strict なら警告も）/ 2 引数の誤り
 import { readFileSync, existsSync } from 'node:fs'
-import { exportPptx, summaryLines } from './export.ts'
+import { exportPptx, isValidRange, summaryLines } from './export.ts'
 import { check } from './opc/check.ts'
 
 const USAGE = `slidev-pptx export [entry=slides.md]
@@ -39,7 +39,9 @@ const KNOWN_FLAGS: Record<string, 'string' | 'boolean'> = {
 }
 
 export function parseArgs(argv: string[]): Parsed | { error: string } {
-  const [command = '', ...rest] = argv
+  // `slidev-pptx --help` のように先頭がフラグならサブコマンド無し
+  const command = argv[0] && !argv[0].startsWith('-') ? argv[0] : ''
+  const rest = command ? argv.slice(1) : argv
   const positional: string[] = []
   const flags: Record<string, string | boolean> = {}
   for (let i = 0; i < rest.length; i++) {
@@ -90,6 +92,16 @@ export async function main(argv: string[]): Promise<number> {
   }
   if (command === 'export') {
     const entry = positional[0] ?? 'slides.md'
+    for (const k of ['wait', 'timeout'] as const) {
+      if (flags[k] !== undefined && !Number.isFinite(Number(flags[k]))) {
+        console.error(`--${k} には数値が要る: ${flags[k]}`)
+        return 2
+      }
+    }
+    if (flags.range !== undefined && !isValidRange(String(flags.range))) {
+      console.error(`--range の綴りが不正: ${flags.range}（例: 1-3,5）`)
+      return 2
+    }
     if (!existsSync(entry)) {
       console.error(`entry が無い: ${entry}`)
       return 1

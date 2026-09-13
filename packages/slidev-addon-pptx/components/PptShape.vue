@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // PPT 部品: 図形（wip/design/ppt-components.md §1.3）。
-// rect / roundRect は div の CSS で、それ以外は inline SVG で描く。文字は上に重ねる。type="line" は対角線。
-import { computed } from 'vue'
+// rect / roundRect は div の CSS で、それ以外は inline SVG で描く（形は PowerPoint の preset の近似）。文字は上に重ねる。
+// type="line" は対角線。矢じりの marker は部品ごとに一意な id を持つ（/print は全スライドを同時に描く）。
+import { computed, onMounted, ref, useId } from 'vue'
 
 type Dash = 'solid' | 'dash' | 'dot'
 type Arrow = 'none' | 'arrow' | 'triangle' | 'oval' | 'diamond'
@@ -27,23 +28,36 @@ const props = withDefaults(
     line?: string | LineProps
     radius?: number
     rotate?: number
+    /** 図形の中の文字の内側余白 px。PPTX の inset にも写す */
+    padding?: number | [number, number, number, number]
     align?: 'left' | 'center' | 'right' | 'justify'
     valign?: 'top' | 'middle' | 'bottom'
     size?: number
     color?: string
   }>(),
-  { export: 'native', name: '', type: 'rect', fill: '#ffffff', line: '#000000', radius: 8, rotate: 0, align: 'center', valign: 'middle' },
+  { export: 'native', name: '', type: 'rect', fill: '#ffffff', line: '#000000', radius: 8, rotate: 0, padding: () => [0, 8, 0, 8], align: 'center', valign: 'middle' },
 )
 
+const uid = useId()
+const root = ref<HTMLElement | null>(null)
+// rotate のときは回転前の枠（offset*）を測って data-ppt-box に載せる（回転後の外接矩形を使わない）
+const measured = ref<Record<string, number>>({})
+onMounted(() => {
+  if (props.rotate && root.value) {
+    const el = root.value
+    measured.value = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }
+  }
+})
+
 const box = computed(() => {
-  const b: Record<string, number> = {}
+  const b: Record<string, number> = { ...measured.value }
   if (props.x !== undefined) b.x = props.x
   if (props.y !== undefined) b.y = props.y
   if (props.w !== undefined) b.w = props.w
   if (props.h !== undefined) b.h = props.h
   return b
 })
-const positioned = computed(() => Object.keys(box.value).length > 0)
+const positioned = computed(() => props.x !== undefined || props.y !== undefined || props.w !== undefined || props.h !== undefined)
 const lineProps = computed<LineProps | undefined>(() => {
   if (!props.line || props.line === 'none') return undefined
   return typeof props.line === 'string' ? { color: props.line, width: 1 } : { width: 1, ...props.line }
@@ -55,6 +69,7 @@ const dashArray = computed(() => {
   const w = lineProps.value?.width ?? 1
   return d === 'dash' ? `${w * 4} ${w * 2}` : d === 'dot' ? `${w} ${w}` : undefined
 })
+const paddingCss = computed(() => (Array.isArray(props.padding) ? props.padding.map((v) => `${v}px`).join(' ') : `${props.padding}px`))
 
 const style = computed(() => {
   const s: Record<string, string | undefined> = {
@@ -85,7 +100,7 @@ const style = computed(() => {
   return s
 })
 
-/** viewBox 0 0 100 100 の多角形。preserveAspectRatio="none" で枠に合わせる */
+/** viewBox 0 0 100 100 の多角形。preserveAspectRatio="none" で枠に合わせる（PowerPoint の preset の既定 adj とは別物。近似） */
 const polygon = computed(() => {
   switch (props.type) {
     case 'rightArrow':
@@ -107,21 +122,24 @@ const polygon = computed(() => {
   }
 })
 
-const opts = computed(() =>
-  JSON.stringify({
+const opts = computed(() => {
+  const o: Record<string, unknown> = {
     type: props.type,
     fill: props.fill,
     line: props.line,
-    radius: props.radius,
     rotate: props.rotate,
+    padding: props.padding,
     valign: props.valign,
     align: props.align,
-  }),
-)
+  }
+  if (props.type === 'roundRect') o.radius = props.radius
+  return JSON.stringify(o)
+})
 </script>
 
 <template>
   <div
+    ref="root"
     data-ppt="shape"
     :data-ppt-export="props.export"
     :data-ppt-name="props.name"
@@ -137,25 +155,25 @@ const opts = computed(() =>
       preserveAspectRatio="none"
       aria-hidden="true"
     >
-      <ellipse v-if="props.type === 'ellipse'" cx="50" cy="50" rx="49.5" ry="49.5" :fill="fillColor" :stroke="lineProps?.color ?? 'none'" :stroke-width="lineProps?.width ?? 0" :stroke-dasharray="dashArray" vector-effect="non-scaling-stroke" />
+      <ellipse v-if="props.type === 'ellipse'" cx="50" cy="50" rx="50" ry="50" :fill="fillColor" :stroke="lineProps?.color ?? 'none'" :stroke-width="lineProps?.width ?? 0" :stroke-dasharray="dashArray" vector-effect="non-scaling-stroke" />
       <polygon v-else :points="polygon" :fill="fillColor" :stroke="lineProps?.color ?? 'none'" :stroke-width="lineProps?.width ?? 0" :stroke-dasharray="dashArray" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
     </svg>
     <svg v-else-if="props.type === 'line'" class="ppt-shape-line" aria-hidden="true">
       <defs>
-        <marker id="ppt-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <marker :id="`ppt-arrow-${uid}`" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" :fill="lineProps?.color ?? '#000000'" />
         </marker>
       </defs>
       <line
-        x1="0" y1="0" x2="100%" y2="100%"
+        x1="0" y1="0" x2="100%" :y2="props.h ? '100%' : '0'"
         :stroke="lineProps?.color ?? '#000000'"
         :stroke-width="lineProps?.width ?? 1"
         :stroke-dasharray="dashArray"
-        :marker-start="lineProps?.head && lineProps.head !== 'none' ? 'url(#ppt-arrow)' : undefined"
-        :marker-end="lineProps?.tail && lineProps.tail !== 'none' ? 'url(#ppt-arrow)' : undefined"
+        :marker-start="lineProps?.head && lineProps.head !== 'none' ? `url(#ppt-arrow-${uid})` : undefined"
+        :marker-end="lineProps?.tail && lineProps.tail !== 'none' ? `url(#ppt-arrow-${uid})` : undefined"
       />
     </svg>
-    <div v-if="props.type !== 'line'" class="ppt-shape-text"><slot /></div>
+    <div v-if="props.type !== 'line'" class="ppt-shape-text" :style="{ padding: paddingCss }"><slot /></div>
   </div>
 </template>
 
@@ -165,6 +183,7 @@ const opts = computed(() =>
   inset: 0;
   width: 100%;
   height: 100%;
+  overflow: visible; /* 輪郭線の外半分を切らない */
 }
 .ppt-shape-line {
   position: absolute;
@@ -177,7 +196,6 @@ const opts = computed(() =>
 }
 .ppt-shape-text {
   position: relative;
-  padding: 0 0.5em;
 }
 .ppt-shape-text :deep(> :first-child) {
   margin-top: 0;

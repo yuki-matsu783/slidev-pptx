@@ -12,7 +12,8 @@ import { assignNames } from './names.ts'
 import { sanitizeXmlText } from './sanitize.ts'
 import { notesText } from './notes.ts'
 import { resolveLayout } from './layout.ts'
-import { LAYOUTS, defineMasters, masterFor, hasPlaceholder } from './masters.ts'
+import { defineMasters, masterFor, hasPlaceholder, placeholderBox } from './masters.ts'
+import type { LayoutName } from './masters.ts'
 
 export interface Asset {
   data: string
@@ -41,13 +42,15 @@ export interface BuildResult {
 const OFFSLIDE_WARN_PX = 5
 const DIM_TRANSPARENCY = 55
 
-export async function build(capture: Capture, data: DeckData, opts: BuildOptions): Promise<BuildResult> {
+export async function build(input: Capture, data: DeckData, opts: BuildOptions): Promise<BuildResult> {
+  // 入力を壊さない（リンクの写像などで書き換えるため写しを取る）
+  const capture: Capture = structuredClone(input)
   const canvas = capture.canvas
   const pptx = new PptxGenJS()
   pptx.layout = 'LAYOUT_WIDE'
   pptx.theme = themeFonts()
-  if (data.config?.title) pptx.title = data.config.title
-  if (data.config?.author) pptx.author = data.config.author
+  if (data.config?.title) pptx.title = sanitizeXmlText(data.config.title)
+  if (data.config?.author) pptx.author = sanitizeXmlText(data.config.author)
   defineMasters(pptx, canvas.width)
 
   const report: Report = emptyReport(opts.output ?? '')
@@ -70,6 +73,7 @@ export async function build(capture: Capture, data: DeckData, opts: BuildOptions
 
   const slides = [...capture.slides].sort((a, b) => a.no - b.no)
   report.slides = slides.length
+  let keptTotal = 0
   // PptxGenJS の hyperlink.slide は PPTX の中での順番（slideN.xml）。range で絞ると元の番号とずれるので写像する
   const slideIndexByNo = new Map(slides.map((s, i) => [s.no, i + 1]))
   const mapLink = (link: Run['link'] | undefined, no: number, id: string): Run['link'] | undefined => {
@@ -114,19 +118,46 @@ export async function build(capture: Capture, data: DeckData, opts: BuildOptions
 
     // 要素の前処理: 自由配置の寄せ・落とし、role の確定
     const roles = new Map<string, RoleHint>()
+    const usedRoles = new Set<RoleHint>()
     const boxes = new Map<string, Box>()
     const kept: Element[] = []
     for (const e of sc.elements) {
       let placeholder = false
       if (e.kind === 'text' && e.roleHint) {
-        if (hasPlaceholder(master, e.roleHint)) {
+        if (!hasPlaceholder(master, e.roleHint)) {
+          if (master !== 'blank') warn(sc.no, { code: 'W-LAYOUT', elementId: e.id, message: `レイアウト "${master}" に placeholder "${e.roleHint}" が無いので自由配置にした` })
+        } else if (usedRoles.has(e.roleHint)) {
+          // 同じ role を 2 つ入れると <p:ph idx> が重複する（C12）。2 つ目以降は自由配置
+          warn(sc.no, { code: 'W-LAYOUT', elementId: e.id, message: `placeholder "${e.roleHint}" は既に使われているので自由配置にした` })
+        } else {
           roles.set(e.id, e.roleHint)
+          usedRoles.add(e.roleHint)
           placeholder = true
-        } else if (master !== 'blank') {
-          warn(sc.no, { code: 'W-LAYOUT', elementId: e.id, message: `レイアウト "${master}" に placeholder "${e.roleHint}" が無いので自由配置にした` })
         }
       }
-      if (placeholder || e.kind === 'line') {
+      if (placeholder) {
+        kept.push(e)
+        continue
+      }
+      if (e.kind === 'line') {
+        // 線は端点で寄せる（負の EMU はインチ扱いになって壊れる。§4.1）
+        const x1 = Math.min(e.from.x, e.to.x)
+        const y1 = Math.min(e.from.y, e.to.y)
+        const x2 = Math.max(e.from.x, e.to.x)
+        const y2 = Math.max(e.from.y, e.to.y)
+        const cx1 = Math.max(0, Math.min(canvas.width, x1))
+        const cx2 = Math.max(0, Math.min(canvas.width, x2))
+        const cy1 = Math.max(0, Math.min(canvas.height, y1))
+        const cy2 = Math.max(0, Math.min(canvas.height, y2))
+        const shift = Math.max(cx1 - x1, x2 - cx2, cy1 - y1, y2 - cy2)
+        if (cx2 - cx1 <= 0 && cy2 - cy1 <= 0) {
+          warn(sc.no, { code: 'W-HIDDEN', elementId: e.id, message: 'スライドの外にあるので飛ばした' })
+          continue
+        }
+        if (shift >= OFFSLIDE_WARN_PX) warn(sc.no, { code: 'W-OFFSLIDE', elementId: e.id, message: `スライドの外に ${Math.round(shift)} px 掛かるので内側に寄せた` })
+        const flip = (e.from.x < e.to.x) !== (e.from.y < e.to.y) && e.from.y !== e.to.y && e.from.x !== e.to.x
+        e.from = { x: cx1, y: flip ? cy2 : cy1 }
+        e.to = { x: cx2, y: flip ? cy1 : cy2 }
         kept.push(e)
         continue
       }
@@ -173,7 +204,7 @@ export async function build(capture: Capture, data: DeckData, opts: BuildOptions
       const box = boxes.get(e.id) ?? e.box
       switch (e.kind) {
         case 'text':
-          addText(pptx, slide, e, box, roles.get(e.id), name, lang, canvas, sc, ctx)
+          addText(pptx, slide, e, box, roles.get(e.id), master, name, lang, canvas, sc, ctx)
           break
         case 'shape':
           addShape(pptx, slide, e, box, name, lang, canvas)
@@ -193,12 +224,13 @@ export async function build(capture: Capture, data: DeckData, opts: BuildOptions
     for (const w of sc.warnings) warn(sc.no, w, w.elementId ? nameOf.get(w.elementId) : undefined)
 
     const note = data.slides[index]?.note
-    if (note) slide.addNotes(notesText(note))
+    if (note) slide.addNotes(sanitizeXmlText(notesText(note)))
+    keptTotal += kept.length
   }
 
-  const all = slides.flatMap((s) => s.elements)
+  // native = 出せた要素（落としたものは数えない）− 画像への置き換え
   report.replaced = report.replacements.length
-  report.native = all.length - report.replaced
+  report.native = keptTotal - report.replaced
   return { pptx, ctx }
 }
 
@@ -210,6 +242,7 @@ function addText(
   e: TextElement,
   box: Box,
   role: RoleHint | undefined,
+  master: LayoutName,
   name: string,
   lang: string,
   canvas: Canvas,
@@ -233,10 +266,10 @@ function addText(
   if (e.rotate) o.rotate = e.rotate
   slide.addText(runs.length ? runs : [{ text: '' }], o)
 
-  // 縮小率（§3.3）
-  const targetH = role ? placeholderHeight(role, sc, ctx) : box.h
+  // 縮小率（§3.3）: placeholder 枠は対応表の h（そのスライドのレイアウト）と比べ、自由配置は寄せた枠の h と比べる
+  const ph = role ? placeholderBox(master, role) : undefined
+  const boxH = ph ? (ph.h * canvas.width) / 980 : box.h
   const contentH = e.fit?.contentHeight ?? 0
-  const boxH = Math.max(e.fit?.boxHeight ?? 0, targetH)
   if (contentH > 0 && boxH > 0 && contentH > boxH) {
     const scale: AutofitScale = {
       fontScale: Math.max(25000, Math.floor((boxH / contentH) * 100) * 1000),
@@ -246,14 +279,6 @@ function addText(
     ;(ctx.autofit[sc.no] ??= {})[name] = scale
     ctx.report.warnings.push({ code: 'W-OVERFLOW', elementId: e.id, slide: sc.no, name, message: `枠に収まらないので縮小率 ${scale.fontScale / 1000}% を書いた` })
   }
-}
-
-function placeholderHeight(role: RoleHint, sc: SlideCapture, ctx: PatchContext): number {
-  // 対応表の px（canvasWidth 980 基準）。§3.3 は「placeholder 枠は対応表の h と比べる」
-  for (const def of Object.values(LAYOUTS)) {
-    for (const o of def.objects) if (o.placeholder.options.name === role) return (o.placeholder.options.h * ctx.capture.canvas.width) / 980
-  }
-  return sc.elements.length ? 0 : 0
 }
 
 function toRuns(paragraphs: Paragraph[], lang: string, canvas: Canvas, elementLink?: Run['link']): PptxGenJS.TextProps[] {
@@ -309,12 +334,15 @@ function runProps(r: Run, lang: string, canvas: Canvas, code: boolean): PptxGenJ
 }
 
 function linkProps(link: NonNullable<Run['link']>): PptxGenJS.HyperlinkProps {
-  return 'url' in link ? { url: link.url } : { slide: link.slide }
+  return 'url' in link ? { url: sanitizeXmlText(link.url) } : { slide: link.slide }
 }
 
 function applyFrame(pptx: PptxGenJS, o: PptxGenJS.TextPropsOptions, frame: TextElement['frame'], canvas: Canvas): void {
-  if (frame.fill) o.fill = { color: hex(frame.fill.color), ...(frame.fill.transparency ? { transparency: Math.round(frame.fill.transparency) } : {}) }
-  else if (frame.transparency) o.fill = { color: 'FFFFFF', transparency: 100 }
+  // §4.2: frame.transparency は fill.transparency にだけ写す（run には収集時に掛け込んである）
+  if (frame.fill) {
+    const t = frame.fill.transparency ?? frame.transparency
+    o.fill = { color: hex(frame.fill.color), ...(t ? { transparency: Math.round(t) } : {}) }
+  }
   if (frame.line) o.line = { color: hex(frame.line.color), width: pt(frame.line.width, canvas), dashType: toDashType(frame.line.dash) }
   if (frame.radius) {
     o.shape = pptx.ShapeType.roundRect
@@ -348,10 +376,11 @@ function addShape(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: ShapeElement, box:
 }
 
 function addLine(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: LineElement, name: string, canvas: Canvas): void {
-  const x = Math.max(0, Math.min(e.from.x, e.to.x))
-  const y = Math.max(0, Math.min(e.from.y, e.to.y))
-  const w = Math.min(canvas.width, Math.max(e.from.x, e.to.x)) - x
-  const h = Math.min(canvas.height, Math.max(e.from.y, e.to.y)) - y
+  // 端点は build の前処理でキャンバスの中に寄せてある（負の EMU を出さない）
+  const x = Math.min(e.from.x, e.to.x)
+  const y = Math.min(e.from.y, e.to.y)
+  const w = Math.abs(e.to.x - e.from.x)
+  const h = Math.abs(e.to.y - e.from.y)
   const flipV = (e.from.x < e.to.x && e.from.y > e.to.y) || (e.from.x > e.to.x && e.from.y < e.to.y)
   const line: PptxGenJS.ShapeLineProps = { color: hex(e.line.color), width: Math.max(0.5, pt(e.line.width, canvas)), dashType: toDashType(e.line.dash) }
   if (e.line.head) line.beginArrowType = arrow(e.line.head)
@@ -406,12 +435,15 @@ function addImage(
 
 function addTable(slide: PptxGenJS.Slide, e: TableElement, box: Box, name: string, lang: string, canvas: Canvas): void {
   const rows: PptxGenJS.TableRow[] = e.rows.map((row) => row.map((cell) => toCell(cell, lang, canvas)))
+  // 表の高さは rowH で決まる。寄せた枠（box.h）より高いなら、行の高さを比例で縮める
+  const total = e.rowH.reduce((a, b) => a + b, 0)
+  const scale = total > box.h && total > 0 ? box.h / total : 1
   slide.addTable(rows, {
     x: emu(box.x, canvas),
     y: emu(box.y, canvas),
     w: emu(box.w, canvas),
     colW: e.colW.map((w) => emu(w, canvas)),
-    rowH: e.rowH.map((h) => emu(h, canvas)),
+    rowH: e.rowH.map((h) => emu(h * scale, canvas)),
     objectName: name,
     fontFace: fontFor('body'),
     lang,

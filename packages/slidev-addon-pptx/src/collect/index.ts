@@ -13,23 +13,33 @@ export function collect(): Capture {
 
   const round = (n: number) => Math.round(n * 100) / 100
   const px = (v: string) => parseFloat(v) || 0
-  const hex = (color: string): string => {
-    const m = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?\s*\)/i.exec(color ?? '')
+  /** 読めた色なら '#rrggbb'、透明や読めない形式（oklch など）なら undefined */
+  const parseColor = (color: string): string | undefined => {
+    const m = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+%?))?\s*\)/i.exec(color ?? '')
     if (!m) {
       if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase()
       const s = /^#([0-9a-f]{3})$/i.exec(color ?? '')
       if (s) return '#' + s[1].toLowerCase().split('').map((c) => c + c).join('')
-      return '#ffffff'
+      return undefined
     }
-    if (m[4] !== undefined && Number(m[4]) === 0) return '#ffffff'
+    if (m[4] !== undefined && parseFloat(m[4]) === 0) return undefined
     return '#' + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, '0')).join('')
   }
+  /** 塗り用（透明・不明は白） */
+  const hex = (color: string): string => parseColor(color) ?? '#ffffff'
+  const knownColor = (color: string) => !color || color === 'transparent' || /^(rgba?\(|#)/i.test(color)
   const alphaOf = (color: string): number => {
-    const m = /^rgba?\(\s*\d+[,\s]+\d+[,\s]+\d+(?:[,\s/]+([\d.]+))?\s*\)/i.exec(color ?? '')
+    const m = /^rgba?\(\s*\d+[,\s]+\d+[,\s]+\d+(?:[,\s/]+([\d.]+)(%?))?\s*\)/i.exec(color ?? '')
     if (!m) return color && color !== 'transparent' ? 1 : 0
-    return m[1] === undefined ? 1 : Number(m[1])
+    if (m[1] === undefined) return 1
+    return m[2] ? Number(m[1]) / 100 : Number(m[1])
   }
   const cs = (el: globalThis.Element) => getComputedStyle(el)
+  /** SVG 名前空間の要素は tagName が小文字なので、判定は大文字に揃える */
+  const tagOf = (el: globalThis.Element) => el.tagName.toUpperCase()
+  /** CSS の空白畳み込みと同じ対象（全角空白 U+3000 や NBSP は畳まない） */
+  const collapse = (s: string) => s.replace(/[ \t\r\n\f]+/g, ' ')
+  const blank = (s: string) => /^[ \t\r\n\f]*$/.test(s)
 
   // ---------------------------------------------------------------- 入口
   let containers = Array.from(document.querySelectorAll<HTMLElement>('#print-content > .print-slide-container'))
@@ -73,7 +83,7 @@ export function collect(): Capture {
       if (s.display === 'none') return 'none'
       if (s.visibility === 'hidden') return 'hidden'
       const b = boxOf(el)
-      const tag = el.tagName
+      const tag = tagOf(el)
       // display: inline の要素がブロックの子（img など）だけを持つと自身の rect は 0 になる。子があれば子に判断を委ねる
       if (b.w === 0 && (b.h === 0 || tag !== 'HR') && el.children.length === 0) return 'none'
       if (effectiveOpacity(el) === 0) return 'opacity'
@@ -131,19 +141,26 @@ export function collect(): Capture {
     }
 
     // ---------------------------------------------------------------- run
+    let colorWarned = false
     const runStyle = (el: globalThis.Element, inCode: boolean, code: boolean): Omit<Run, 'text'> => {
       const s = cs(el)
+      const parsed = parseColor(s.color)
       const r: Omit<Run, 'text'> = {
         size: len(s.fontSize),
-        color: hex(s.color),
+        color: parsed ?? '#000000', // 文字色の既定は黒（白地に白文字にしない）
         bold: parseInt(s.fontWeight, 10) >= 600 || s.fontWeight === 'bold' || s.fontWeight === 'bolder',
         italic: s.fontStyle === 'italic' || s.fontStyle === 'oblique',
-        underline: /underline/.test(s.textDecorationLine) && !el.closest('a'),
+        // Slidev の a は border-bottom で下線を描く。a の中でも <u> なら本物の下線
+        underline: /underline/.test(s.textDecorationLine) && (!el.closest('a') || !!el.closest('u')),
         strike: /line-through/.test(s.textDecorationLine) || !!el.closest('del, s'),
         code,
       }
+      if (!knownColor(s.color) && !colorWarned) {
+        colorWarned = true
+        warn('W-CSS', `再現できない色の形式を捨てた: ${s.color}（黒にした）`, '?')
+      }
       if (!inCode) {
-        const o = effectiveOpacity(el)
+        const o = effectiveOpacity(el) * (alphaOf(s.color) || (parsed ? 1 : 1))
         if (o < 1) r.transparency = Math.round((1 - o) * 100 * 1e6) / 1e6
       }
       if (code || el.closest('mark')) {
@@ -154,17 +171,34 @@ export function collect(): Capture {
       if (el.closest('sup')) r.sup = true
       if (el.closest('sub')) r.sub = true
       const a = el.closest('a[href]') as HTMLAnchorElement | null
-      if (a) r.link = linkOf(a)
+      if (a) {
+        const link = linkOf(a)
+        if (link) r.link = link
+      }
       if (s.letterSpacing && s.letterSpacing !== 'normal') r.charSpacing = len(s.letterSpacing)
-      if (s.textTransform && s.textTransform !== 'none') r.transparency = r.transparency // 値はそのまま。警告は呼び出し側
+      if (s.textTransform && s.textTransform !== 'none') warn('W-CSS', '再現できない装飾を捨てた: text-transform', '?')
       return r
     }
-    const linkOf = (a: HTMLAnchorElement): Run['link'] => {
+    const linkOf = (a: HTMLAnchorElement): Run['link'] | undefined => {
       const href = a.getAttribute('href') ?? ''
       const m = /^#{1,2}(\d+)$/.exec(href) ?? /^\/(\d+)$/.exec(href)
       if (m) return { slide: Number(m[1]) }
-      // a.href は正規化で末尾に / が付く。書いたままの URL を残し、相対だけ解く
-      return { url: /^[a-z][a-z0-9+.-]*:/i.test(href) ? href : new URL(href, location.href).href }
+      // a.href は正規化で末尾に / が付く。書いたままの URL を残す。
+      // 数字でないアンカーや相対パスは開発サーバの URL に解決されて PPTX に残るので外す
+      if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return { url: href }
+      warn('W-LINK', `相対リンク "${href}" は PPTX に持ち込めないので外した`, '?')
+      return undefined
+    }
+
+    /** <br>: 直前の run に breakAfter。既に立っていれば（連続 <br>）空の run を挟む。先頭なら空の run */
+    const pushBreak = (out: Run[], styleEl: globalThis.Element) => {
+      if (!out.length || out[out.length - 1].breakAfter) out.push({ text: '', ...runStyle(styleEl, false, false) })
+      out[out.length - 1].breakAfter = true
+    }
+    /** 段落の中に置けないもの（svg / img / canvas など）。画像への置き換えは枠の単位なので、ここでは落として警告 */
+    const isInlineBlocker = (el: globalThis.Element) => {
+      const t = tagOf(el)
+      return REPLACE_TAGS.has(t) || t === 'IMG' || t === 'TABLE' || t === 'PRE' || el.classList.contains('katex-display') || el.classList.contains('mermaid')
     }
 
     /** inline の子を歩いて run を集める。ブロックの子に当たったら止めて残りを返す */
@@ -172,9 +206,9 @@ export function collect(): Capture {
       for (const node of Array.from(parent.childNodes)) {
         if (node.nodeType === 3) {
           const raw = node.nodeValue ?? ''
-          const text = inCode ? raw : raw.replace(/\s+/g, ' ')
+          const text = inCode ? raw : collapse(raw)
           const holder = (node.parentElement ?? parent) as globalThis.Element
-          if (!text.trim() && !inCode) {
+          if (blank(text) && !inCode) {
             // 空白だけのノードは、前の run の文字を変えず、親の書式で独立した run にする（枠の端では trimRuns が落とす）
             if (out.length && text.length && !out[out.length - 1].text.endsWith(' ')) out.push({ text: ' ', ...runStyle(parent, inCode, false) })
             continue
@@ -185,36 +219,35 @@ export function collect(): Capture {
         }
         if (node.nodeType !== 1) continue
         const el = node as HTMLElement
-        if (el.tagName === 'BR') {
-          if (out.length) out[out.length - 1].breakAfter = true
+        const tag = tagOf(el)
+        if (tag === 'BR') {
+          pushBreak(out, parent)
           continue
         }
         if (el.matches(UI_SELECTOR)) continue
         if (el.classList.contains('katex')) {
           const html = el.querySelector('.katex-html')
-          const text = (html?.textContent ?? el.textContent ?? '').replace(/\s+/g, ' ').trim()
+          const text = collapse(html?.textContent ?? el.textContent ?? '').trim()
           out.push({ text, ...runStyle(el, inCode, false), italic: true })
           warn('W-MATH-INLINE', `インライン数式 "${text}" を文字に平坦化した`, id)
           continue
         }
         if (cs(el).display === 'none') continue
-        if (INLINE_TAGS.has(el.tagName) || cs(el).display.startsWith('inline')) {
-          const tt = cs(el).textTransform
-          if (tt && tt !== 'none') warn('W-CSS', `再現できない装飾を捨てた: text-transform`, id)
-          collectRuns(el, id, inCode, out)
+        if (isInlineBlocker(el)) {
+          warn('W-INLINE', `段落の中の ${tag.toLowerCase()} は出せないので落とした`, id)
           continue
         }
-        // ブロックの子（div など）: 中の inline を続けて拾う
+        // inline でもブロック（div など）でも、中の inline を続けて拾う
         collectRuns(el, id, inCode, out)
       }
       return out
     }
     const trimRuns = (runs: Run[]): Run[] => {
-      while (runs.length && !runs[0].text.trim() && !runs[0].breakAfter) runs.shift()
-      while (runs.length && !runs[runs.length - 1].text.trim() && !runs[runs.length - 1].breakAfter) runs.pop()
+      while (runs.length && blank(runs[0].text) && !runs[0].breakAfter) runs.shift()
+      while (runs.length && blank(runs[runs.length - 1].text) && !runs[runs.length - 1].breakAfter) runs.pop()
       if (runs.length) {
-        runs[0].text = runs[0].text.replace(/^\s+/, '')
-        runs[runs.length - 1].text = runs[runs.length - 1].text.replace(/\s+$/, '')
+        runs[0].text = runs[0].text.replace(/^[ \t\r\n\f]+/, '')
+        runs[runs.length - 1].text = runs[runs.length - 1].text.replace(/[ \t\r\n\f]+$/, '')
       }
       return runs.filter((r) => r.text.length || r.breakAfter)
     }
@@ -235,11 +268,12 @@ export function collect(): Capture {
 
     // ---------------------------------------------------------------- 段落（ブロック → Paragraph[]）
     const blockParagraphs = (el: globalThis.Element, id: string): Paragraph[] => {
-      const tag = el.tagName
+      const tag = tagOf(el)
       if (/^H[1-6]$/.test(tag)) return [paragraphOf(el, 'heading', Number(tag[1]), trimRuns(collectRuns(el, id, false)))]
       if (tag === 'UL' || tag === 'OL') return listParagraphs(el, id, 0)
       if (tag === 'PRE') return codeParagraphs(el)
-      return [paragraphOf(el, 'plain', 0, trimRuns(collectRuns(el, id, false)))]
+      const runs = trimRuns(collectRuns(el, id, false))
+      return runs.length ? [paragraphOf(el, 'plain', 0, runs)] : [] // 空の <p> は落とす
     }
     const listParagraphs = (list: globalThis.Element, id: string, level: number): Paragraph[] => {
       const out: Paragraph[] = []
@@ -263,23 +297,20 @@ export function collect(): Capture {
           if (runs.length) pushPara(li, runs)
         }
         for (const node of Array.from(li.childNodes)) {
-          if (node.nodeType === 3 || (node.nodeType === 1 && (INLINE_TAGS.has((node as globalThis.Element).tagName) || cs(node as globalThis.Element).display.startsWith('inline')))) {
-            const tmp = document.createDocumentFragment()
-            void tmp
-            const holder = document.createElement('span')
-            // 直接 collectRuns を node 単位で
+          const isInlineNode =
+            node.nodeType === 3 ||
+            (node.nodeType === 1 && !isInlineBlocker(node as globalThis.Element) && (INLINE_TAGS.has(tagOf(node as globalThis.Element)) || cs(node as globalThis.Element).display.startsWith('inline')))
+          if (isInlineNode) {
             if (node.nodeType === 3) {
-              const text = (node.nodeValue ?? '').replace(/\s+/g, ' ')
-              if (text.trim()) pending.push({ text, ...runStyle(li, false, false) })
+              const text = collapse(node.nodeValue ?? '')
+              if (!blank(text)) pending.push({ text, ...runStyle(li, false, false) })
               else if (pending.length && text.length && !pending[pending.length - 1].text.endsWith(' ')) pending.push({ text: ' ', ...runStyle(li, false, false) })
             } else {
               const el = node as globalThis.Element
-              if (el.tagName === 'BR') {
-                if (pending.length) pending[pending.length - 1].breakAfter = true
-              } else if (el.classList.contains('katex')) {
-                collectRuns(holder, id, false, pending) // no-op holder
+              if (tagOf(el) === 'BR') pushBreak(pending, li)
+              else if (el.classList.contains('katex')) {
                 const html = el.querySelector('.katex-html')
-                const text = (html?.textContent ?? '').replace(/\s+/g, ' ').trim()
+                const text = collapse(html?.textContent ?? '').trim()
                 pending.push({ text, ...runStyle(el, false, false), italic: true })
                 warn('W-MATH-INLINE', `インライン数式 "${text}" を文字に平坦化した`, id)
               } else collectRuns(el, id, false, pending)
@@ -288,18 +319,19 @@ export function collect(): Capture {
           }
           if (node.nodeType !== 1) continue
           const el = node as globalThis.Element
+          const t = tagOf(el)
           flush()
-          if (el.tagName === 'P' || /^H[1-6]$/.test(el.tagName)) pushPara(el, trimRuns(collectRuns(el, id, false)))
-          else if (el.tagName === 'UL' || el.tagName === 'OL') {
+          if (t === 'P' || /^H[1-6]$/.test(t)) pushPara(el, trimRuns(collectRuns(el, id, false)))
+          else if (t === 'UL' || t === 'OL') {
             firstDone = true
             out.push(...listParagraphs(el, id, level + 1))
-          } else if (el.tagName === 'PRE') {
+          } else if (t === 'PRE') {
             firstDone = true
             out.push(...codeParagraphs(el))
-          } else if (el.tagName === 'DIV' || el.tagName === 'SECTION') {
+          } else if ((t === 'DIV' || t === 'SECTION') && !isInlineBlocker(el) && !el.querySelector('table, img, pre, svg, canvas, blockquote')) {
             pushPara(el, trimRuns(collectRuns(el, id, false)))
           } else {
-            warn('W-LI-BLOCK', `箇条書きの中の ${el.tagName.toLowerCase()} は出せないので無視した`, id)
+            warn('W-LI-BLOCK', `箇条書きの中の ${t.toLowerCase()} は出せないので無視した`, id)
           }
         }
         flush()
@@ -310,7 +342,7 @@ export function collect(): Capture {
     const codeParagraphs = (pre: globalThis.Element): Paragraph[] => {
       const s = cs(pre)
       const size = len(s.fontSize)
-      const color = hex(s.color)
+      const color = parseColor(s.color) ?? '#000000'
       const lh = s.lineHeight === 'normal' ? round(size * 1.2) : len(s.lineHeight)
       const lines = Array.from(pre.querySelectorAll('.line'))
       const texts = lines.length ? lines.map((l) => l.textContent ?? '') : (pre.textContent ?? '').replace(/\n$/, '').split('\n')
@@ -374,6 +406,8 @@ export function collect(): Capture {
       regionSawSeparator = true
     }
 
+    // 段落の中で拾えないもの（§2.2 の 11 の中に svg などがあるとき）も、description の位置で使う
+    void FLOW_TAGS
     const pushHeadingAsTitle = (el: globalThis.Element) => {
       closeFlow()
       const id = nextId()
@@ -387,7 +421,7 @@ export function collect(): Capture {
         boxSource: 'measured',
         paragraphs: blockParagraphs(el, id),
         frame: { inset: [0, 0, 0, 0] },
-        fit: { contentHeight: round(el.scrollHeight * 1), boxHeight: round(el.clientHeight * 1) },
+        fit: { contentHeight: round(el.scrollHeight * zoom), boxHeight: round(el.clientHeight * zoom) },
         valign: 'top',
       }
       elements.push(t)
@@ -422,13 +456,20 @@ export function collect(): Capture {
 
     // ---------------------------------------------------------------- 表
     const tableElement = (tbl: globalThis.Element, id: string) => {
+      // caption は表の前の自由配置の段落として出す（PptxGenJS の表にキャプションは無い）
+      const caption = Array.from(tbl.children).find((c) => tagOf(c) === 'CAPTION')
+      if (caption) {
+        const cid = nextId()
+        const runs = trimRuns(collectRuns(caption, cid, false))
+        if (runs.length) pushFrame(caption, [paragraphOf(caption, 'plain', 0, runs)], { inset: [0, 0, 0, 0] }, cid)
+      }
       const trs = Array.from(tbl.querySelectorAll('tr')).filter((tr) => tr.closest('table') === tbl)
       const headerRows = Array.from(tbl.querySelectorAll('thead > tr')).filter((tr) => tr.closest('table') === tbl).length
       const tblS = cs(tbl)
       const rows: Cell[][] = trs.map((tr) => {
         const trS = cs(tr)
         return Array.from(tr.children)
-          .filter((c) => c.tagName === 'TD' || c.tagName === 'TH')
+          .filter((c) => tagOf(c) === 'TD' || tagOf(c) === 'TH')
           .map((td) => {
             const s = cs(td)
             const side = (w: string, c: string, fw: string, fc: string) => {
@@ -455,7 +496,7 @@ export function collect(): Capture {
             return cell
           })
       })
-      const firstRow = trs[0] ? Array.from(trs[0].children).filter((c) => c.tagName === 'TD' || c.tagName === 'TH') : []
+      const firstRow = trs[0] ? Array.from(trs[0].children).filter((c) => tagOf(c) === 'TD' || tagOf(c) === 'TH') : []
       const colW = firstRow.map((c) => round(c.getBoundingClientRect().width))
       const rowH = trs.map((tr) => round(tr.getBoundingClientRect().height))
       elements.push({ id, name: '', source: 'markdown', kind: 'table', box: boxOf(tbl), boxSource: 'measured', colW, rowH, headerRows, rows })
@@ -496,9 +537,10 @@ export function collect(): Capture {
         const walkInner = (parent: globalThis.Element) => {
           for (const c of Array.from(parent.children)) {
             if ((c as HTMLElement).dataset?.ppt !== undefined) continue
-            if (FLOW_TAGS.has(c.tagName) || c.tagName === 'PRE') out.push(...blockParagraphs(c, id))
-            else if (c.tagName === 'TABLE' || c.tagName === 'IMG' || c.tagName === 'BLOCKQUOTE' || c.classList.contains('katex-display')) warn('W-PPT-CONTENT', `PptText の中の ${c.tagName.toLowerCase()} は無視した`, id)
-            else if (c.tagName === 'BR') {
+            const t = tagOf(c)
+            if (FLOW_TAGS.has(t) || t === 'PRE') out.push(...blockParagraphs(c, id))
+            else if (t === 'TABLE' || t === 'IMG' || t === 'BLOCKQUOTE' || REPLACE_TAGS.has(t) || c.classList.contains('katex-display')) warn('W-PPT-CONTENT', `PptText の中の ${t.toLowerCase()} は無視した`, id)
+            else if (t === 'BR') {
               /* 段落の中で扱う */
             } else walkInner(c)
           }
@@ -553,12 +595,12 @@ export function collect(): Capture {
         return
       }
       if (type === 'image') {
-        const img = (el.tagName === 'IMG' ? el : el.querySelector('img')) as HTMLImageElement | null
+        const img = (tagOf(el) === 'IMG' ? el : el.querySelector('img')) as HTMLImageElement | null
         pushImage(el, { name, source: 'ppt', box, boxSource, src: img?.currentSrc || img?.src, alt: img?.alt || (opts.alt as string) || '', fit: (opts.fit as ImageElement['fit']) ?? 'contain' }, id)
         return
       }
       if (type === 'table') {
-        const tbl = el.tagName === 'TABLE' ? el : el.querySelector('table')
+        const tbl = tagOf(el) === 'TABLE' ? el : el.querySelector('table')
         if (tbl) {
           tableElement(tbl, id)
           const last = elements[elements.length - 1]
@@ -573,7 +615,7 @@ export function collect(): Capture {
 
     // ---------------------------------------------------------------- 歩く（§2.2）
     const walk = (el: HTMLElement, region: FlowState['region'], throughTransparent: boolean) => {
-      const tag = el.tagName
+      const tag = tagOf(el)
       // 0
       if (el.matches(UI_SELECTOR)) return
       // 1
@@ -614,11 +656,14 @@ export function collect(): Capture {
         replace(el, el.classList.contains('katex-display') ? 'math' : el.classList.contains('mermaid') ? 'mermaid' : tag === 'SVG' ? 'svg' : 'unknown-element')
         return
       }
+      // p の中身が置換対象（.katex-display、svg、mermaid など）だけなら p ごと置き換える（markdown-it が p に包むため）
       if (tag === 'P') {
         const kids = Array.from(el.children)
-        if (kids.length === 1 && kids[0].classList.contains('katex-display') && !(el.textContent ?? '').replace(kids[0].textContent ?? '', '').trim()) {
+        const only = kids.length === 1 ? kids[0] : undefined
+        if (only && isInlineBlocker(only) && tagOf(only) !== 'IMG' && tagOf(only) !== 'TABLE' && tagOf(only) !== 'PRE' && blank((el.textContent ?? '').replace(only.textContent ?? '', ''))) {
           separator()
-          replace(el, 'math')
+          const k = tagOf(only)
+          replace(el, only.classList.contains('katex-display') ? 'math' : only.classList.contains('mermaid') ? 'mermaid' : k === 'SVG' ? 'svg' : 'unknown-element')
           return
         }
       }
@@ -628,7 +673,10 @@ export function collect(): Capture {
         const img = el as HTMLImageElement
         const a = el.closest('a[href]') as HTMLAnchorElement | null
         const e = pushImage(el, { src: img.currentSrc || img.src, alt: img.alt || '' })
-        if (a && a.closest('.slidev-layout, [data-slidev-no]')) e.link = linkOf(a)
+        if (a && a.closest('.slidev-layout, [data-slidev-no]')) {
+          const link = linkOf(a)
+          if (link) e.link = link
+        }
         return
       }
       // 7
@@ -712,7 +760,7 @@ export function collect(): Capture {
       replace(el, 'unknown-element')
     }
     const isSeparatorLike = (c: HTMLElement): boolean => {
-      const t = c.tagName
+      const t = tagOf(c)
       if (['TABLE', 'PRE', 'BLOCKQUOTE', 'IMG', 'HR', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'DETAILS'].includes(t)) return true
       if (REPLACE_TAGS.has(t) || c.classList.contains('katex-display') || c.classList.contains('mermaid')) return true
       if (c.dataset.ppt !== undefined || c.dataset.pptExport === 'image') return true
@@ -733,23 +781,35 @@ export function collect(): Capture {
       }
       for (const node of Array.from(el.childNodes)) {
         if (node.nodeType === 3) {
-          const text = (node.nodeValue ?? '').replace(/\s+/g, ' ')
-          if (text.trim()) pending.push({ text, ...runStyle(el, false, false) })
+          const text = collapse(node.nodeValue ?? '')
+          if (!blank(text)) pending.push({ text, ...runStyle(el, false, false) })
           else if (pending.length && text.length && !pending[pending.length - 1].text.endsWith(' ')) pending.push({ text: ' ', ...runStyle(el, false, false) })
           continue
         }
         if (node.nodeType !== 1) continue
         const c = node as HTMLElement
         if (c.matches(UI_SELECTOR)) continue
-        if (c.tagName === 'BR') {
-          if (pending.length) pending[pending.length - 1].breakAfter = true
+        const t = tagOf(c)
+        if (t === 'BR') {
+          pushBreak(pending, el)
           continue
         }
-        const inline = INLINE_TAGS.has(c.tagName) && !c.querySelector('img, table, pre, div, p, ul, ol') && c.dataset.ppt === undefined && c.dataset.pptExport !== 'image'
+        // two-cols / two-cols-header の列は副領域。それ以外の子（.col-header .col-bottom など）は同じ領域で歩く
+        if (c.classList.contains('col-left') || c.classList.contains('col-right')) {
+          flushInline()
+          closeFlow()
+          const sub: FlowState['region'] = c.classList.contains('col-left') ? 'left' : 'right'
+          regionSawSeparator = false
+          if (sub === 'right') titleJustSeen = false
+          walkContainer(c, sub, throughTransparent)
+          closeFlow()
+          continue
+        }
+        const inline = INLINE_TAGS.has(t) && !c.querySelector('img, table, pre, div, p, ul, ol, svg, canvas') && c.dataset.ppt === undefined && c.dataset.pptExport !== 'image'
         if (inline && cs(c).display !== 'none') {
           if (c.classList.contains('katex')) {
             const html = c.querySelector('.katex-html')
-            const text = (html?.textContent ?? '').replace(/\s+/g, ' ').trim()
+            const text = collapse(html?.textContent ?? '').trim()
             pending.push({ text, ...runStyle(c, false, false), italic: true })
             warn('W-MATH-INLINE', `インライン数式 "${text}" を文字に平坦化した`, '?')
           } else collectRuns(c, '?', false, pending)
@@ -769,32 +829,39 @@ export function collect(): Capture {
         pending = []
         if (runs.length) out.push(paragraphOf(el, 'plain', 0, runs))
       }
+      const s0 = cs(el)
+      if (s0.textTransform && s0.textTransform !== 'none') warn('W-CSS', '再現できない装飾を捨てた: text-transform', id)
       const rec = (parent: globalThis.Element) => {
         for (const node of Array.from(parent.childNodes)) {
           if (node.nodeType === 3) {
-            const text = (node.nodeValue ?? '').replace(/\s+/g, ' ')
-            if (text.trim()) pending.push({ text, ...runStyle(parent, false, false) })
+            const text = collapse(node.nodeValue ?? '')
+            if (!blank(text)) pending.push({ text, ...runStyle(parent, false, false) })
             else if (pending.length && text.length && !pending[pending.length - 1].text.endsWith(' ')) pending.push({ text: ' ', ...runStyle(parent, false, false) })
             continue
           }
           if (node.nodeType !== 1) continue
           const c = node as HTMLElement
           if (c.matches(UI_SELECTOR) || cs(c).display === 'none') continue
-          if (c.tagName === 'BR') {
-            if (pending.length) pending[pending.length - 1].breakAfter = true
+          const t = tagOf(c)
+          if (t === 'BR') {
+            pushBreak(pending, parent)
             continue
           }
-          if (INLINE_TAGS.has(c.tagName)) {
+          if (isInlineBlocker(c)) {
+            warn('W-INLINE', `装飾つきの箱の中の ${t.toLowerCase()} は出せないので落とした`, id)
+            continue
+          }
+          if (INLINE_TAGS.has(t)) {
             collectRuns(c, id, false, pending)
             continue
           }
           flush()
-          if (FLOW_TAGS.has(c.tagName) || c.tagName === 'PRE') out.push(...blockParagraphs(c, id))
+          if (FLOW_TAGS.has(t) || t === 'PRE') out.push(...blockParagraphs(c, id))
+          else if (c.querySelector('p, ul, ol, h1, h2, h3, h4, h5, h6, div, pre')) rec(c)
           else {
             // 透明な入れ物: 自分の段落として
             const runs = trimRuns(collectRuns(c, id, false))
-            if (c.querySelector('p, ul, ol, h1, h2, h3, h4, h5, h6, div')) rec(c)
-            else if (runs.length) out.push(paragraphOf(c, 'plain', 0, runs))
+            if (runs.length) out.push(paragraphOf(c, 'plain', 0, runs))
           }
         }
       }
@@ -810,28 +877,29 @@ export function collect(): Capture {
         if (c.matches(UI_SELECTOR)) continue
         if (c.classList.contains('slidev-layout')) roots.push({ el: c, layout: true })
         else if (c.querySelector('.slidev-layout')) findRoots(c)
-        else roots.push({ el: c, layout: false })
+        else if (c.classList.contains('slidev-slide-error') || /^An error occurred on this slide/.test((c.textContent ?? '').trim())) {
+          // Slidev の描画エラー（英語のエラー文が 1 枚として納品されるのを防ぐ）
+          warn('W-RENDER', `スライドの描画に失敗している: ${(c.textContent ?? '').trim().slice(0, 80)}`)
+        } else roots.push({ el: c, layout: false })
       }
     }
     findRoots(page)
 
+    let backgroundColor = hex(cs(container).backgroundColor)
     for (const root of roots) {
       regionSawSeparator = false
       state = null
       if (root.layout) {
-        const left = root.el.querySelector<HTMLElement>(':scope > .col-left')
-        const right = root.el.querySelector<HTMLElement>(':scope > .col-right')
-        if (left && right) {
-          walkContainer(left, 'left', true)
-          closeFlow()
-          regionSawSeparator = false
-          titleJustSeen = false
-          walkContainer(right, 'right', true)
-          closeFlow()
-        } else {
-          walkContainer(root.el, 'root', true)
-          closeFlow()
-        }
+        // 根（.slidev-layout）自身の装飾: layout: image の背景画像、layout: end や layoutClass の背景色
+        const rs = cs(root.el)
+        const m = rs.backgroundImage && rs.backgroundImage !== 'none' ? /url\(["']?([^"')]+)["']?\)/.exec(rs.backgroundImage) : null
+        // cover / intro の背景（frontmatter.background）は Node が取る（§5.5）。それ以外（layout: image など）は画像要素に
+        const fromFrontmatter = root.el.classList.contains('cover') || root.el.classList.contains('intro')
+        if (m && !fromFrontmatter) pushImage(root.el, { src: new URL(m[1], location.href).href })
+        if (alphaOf(rs.backgroundColor) > 0) backgroundColor = hex(rs.backgroundColor)
+        // 子を文書順に歩く。.col-left / .col-right は walkContainer の中で副領域に切り替わる（two-cols-header の .col-header / .col-bottom は根の領域）
+        walkContainer(root.el, 'root', true)
+        closeFlow()
       } else {
         walk(root.el, 'root', true)
         closeFlow()
@@ -845,7 +913,7 @@ export function collect(): Capture {
       no,
       lang,
       zoom,
-      backgroundColor: hex(cs(container).backgroundColor),
+      backgroundColor,
       elements,
       warnings,
     }

@@ -10,11 +10,15 @@ lineNumbers: false
 addons:
   - slidev-addon-pptx
 fonts:
-  sans: 游ゴシック
-  mono: Consolas
+  # Windows は 游ゴシック / Consolas、Mac は OS 同梱の 游ゴシック体 と Menlo に落ちる（計測の行数を PowerPoint に近づける）
+  sans: 游ゴシック, 游ゴシック体, YuGothic
+  mono: Consolas, Menlo
   local:
     - 游ゴシック
+    - 游ゴシック体
+    - YuGothic
     - Consolas
+    - Menlo
 ---
 
 # Slidev 入門
@@ -248,17 +252,17 @@ Markdown の見出し・段落・箇条書き・表はそのままネイティ�
 
 <PptShape type="rightArrow" :x="60" :y="330" :w="140" :h="44" fill="#3b82f6" line="none" color="#ffffff">次へ</PptShape>
 
-<PptText :x="230" :y="320" :w="360" fill="#eef2ff" :radius="8" :padding="12" name="lead">
+<PptText :x="230" :y="320" :w="300" fill="#eef2ff" :radius="8" :padding="12" name="lead">
 
 **座標指定**のテキスト枠。`x` `y` を書かなければ実測配置になります。
 
 </PptText>
 
-<PptShape type="ellipse" :x="640" :y="320" :w="120" :h="64" fill="#fde68a" line="#b45309">楕円</PptShape>
+<PptShape type="ellipse" :x="560" :y="320" :w="120" :h="64" fill="#fde68a" line="#b45309">楕円</PptShape>
 
-<PptShape type="line" :x="60" :y="420" :w="700" :h="0" :line="{ color: '#94a3b8', width: 2, tail: 'arrow' }" />
+<PptShape type="line" :x="60" :y="430" :w="620" :h="0" :line="{ color: '#94a3b8', width: 2, tail: 'arrow' }" />
 
-<PptTable :x="60" :y="440" :rows="[['部品', '出るもの'], ['PptText', 'テキスト枠'], ['PptShape', '図形'], ['PptImage', '画像'], ['PptTable', '表']]" />
+<PptTable :x="720" :y="300" :rows="[['部品', '出るもの'], ['PptText', 'テキスト枠'], ['PptShape', '図形']]" />
 
 ---
 layout: center

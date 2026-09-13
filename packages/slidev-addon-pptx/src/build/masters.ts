@@ -96,3 +96,8 @@ export function masterFor(layout: string): LayoutName {
 export function hasPlaceholder(layout: LayoutName, name: PlaceholderDef['name']): boolean {
   return LAYOUTS[layout].objects.some((o) => o.placeholder.options.name === name)
 }
+
+/** そのレイアウトの placeholder の枠（canvasWidth 980 基準の px）。§3.3 の縮小率は対応表の h と比べる */
+export function placeholderBox(layout: LayoutName, name: PlaceholderDef['name']): PlaceholderDef | undefined {
+  return LAYOUTS[layout].objects.find((o) => o.placeholder.options.name === name)?.placeholder.options
+}

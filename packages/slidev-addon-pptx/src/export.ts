@@ -44,21 +44,45 @@ export async function exportPptx(o: ExportOptions): Promise<Report> {
   const options = await resolveOptions({ entry, theme: o.theme }, 'export')
   const server = await createServer(options, { server: { port: 0 } })
   await server.listen()
-  process.env.NODE_ENV = prevEnv
+  if (prevEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = prevEnv
   const addr = server.httpServer?.address()
   const port = typeof addr === 'object' && addr ? addr.port : Number(server.config.server.port)
   const base = `http://localhost:${port}`
 
+  mkdirSync(dirname(output), { recursive: true })
+  mkdirSync(dirname(reportPath), { recursive: true })
   let browser: Browser | undefined
+  let failed = false
   try {
     browser = await playwright.chromium.launch()
     const data = toDeckData(options.data)
-    const slideCount = o.range ? countRange(o.range, data.slides.length) : data.slides.length
-    const context = await browser.newContext({ deviceScaleFactor: 2, colorScheme: 'light', viewport: { width: data.config?.canvasWidth ?? 980, height: Math.round(((data.config?.canvasWidth ?? 980) * 9) / 16) * Math.max(1, slideCount) } })
+    const total = data.slides.length
+    if (o.range && !isValidRange(o.range)) throw new Error(`--range の綴りが不正: ${o.range}（例: 1-3,5）`)
+    const slideCount = o.range ? countRange(o.range, total) : total
+    const canvasWidth = data.config?.canvasWidth ?? 980
+    const canvasHeight = Math.round(canvasWidth / (data.config?.aspectRatio ?? 16 / 9))
+    // viewport の高さは Slidev と同じ「高さ × 枚数」。Chromium の上限を超えないよう 16384 px で止める（rect はコンテナ基準なのでスクロールしても測れる）
+    const context = await browser.newContext({ deviceScaleFactor: 2, colorScheme: 'light', viewport: { width: canvasWidth, height: Math.min(16384, canvasHeight * Math.max(1, slideCount)) } })
     const page = await context.newPage()
-    await openPrint(page, base, o.range, timeout, o.wait ?? 0)
+    const pageErrors: string[] = []
+    page.on('pageerror', (e) => pageErrors.push(String(e.message ?? e)))
+    page.on('console', (m) => {
+      if (m.type() === 'error' && !/FloatingVue/.test(m.text())) pageErrors.push(m.text())
+    })
+    await openPrint(page, base, o.range, timeout, o.wait ?? 0, slideCount)
 
-    const capture = await page.evaluate(collect)
+    // Vite の依存最適化（"optimized dependencies changed. reloading"）が収集の最中に来ると実行文脈が壊れる。
+    // その場合は読み込み直しを待って 1 回だけやり直す
+    let capture: Capture
+    try {
+      capture = await page.evaluate(collect)
+    } catch (e) {
+      if (!/Execution context was destroyed|navigation|Target closed/i.test(String(e))) throw e
+      await page.waitForLoadState('load', { timeout })
+      await openPrint(page, base, o.range, timeout, o.wait ?? 0, slideCount)
+      capture = await page.evaluate(collect)
+    }
     // Slidev の /print は useNav の初期化時に query.range を 1 度読むだけで、この経路では効かないことがある。
     // URL に渡したうえで、Node 側でも range で絞る（観測できる結果は同じ）
     if (o.range) {
@@ -72,9 +96,9 @@ export async function exportPptx(o: ExportOptions): Promise<Report> {
     for (const sc of capture.slides as (SlideCapture & { dropped?: Record<string, number> })[]) {
       for (const [k, v] of Object.entries(sc.dropped ?? {})) ctx.report.dropped[k] = (ctx.report.dropped[k] ?? 0) + v
     }
+    for (const msg of pageErrors) ctx.report.warnings.push({ code: 'W-RENDER', slide: 0, message: `ブラウザでエラー: ${msg.slice(0, 200)}` })
     const raw = (await pptx.write({ outputType: 'nodebuffer' })) as Buffer
     const out = await postProcess(raw, PATCHES, ctx)
-    mkdirSync(dirname(output), { recursive: true })
     writeFileSync(output, out)
 
     if (o.check !== false) ctx.report.check = await check(out)
@@ -82,21 +106,41 @@ export async function exportPptx(o: ExportOptions): Promise<Report> {
     writeFileSync(reportPath, JSON.stringify(ctx.report, null, 2))
     for (const line of summaryLines(ctx.report)) o.log?.(line)
     return ctx.report
+  } catch (e) {
+    failed = true
+    throw e
   } finally {
-    if (!o.keepServer) {
+    // --keep-server は失敗時だけサーバとブラウザを残す（調査用）
+    if (!(o.keepServer && failed)) {
       await browser?.close().catch(() => {})
       await server.close().catch(() => {})
     }
   }
 }
 
+export function isValidRange(range: string): boolean {
+  return range.split(',').every((part) => {
+    const m = /^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$/.exec(part)
+    return !!m && Number(m[1]) >= 1 && (!m[2] || Number(m[2]) >= Number(m[1]))
+  })
+}
+
 // ---------------------------------------------------------------- ブラウザ
 
 /** 設計 §1.2 の待機列 + UnoCSS の遅延注入を待つ */
-async function openPrint(page: Page, base: string, range: string | undefined, timeout: number, extraWait: number): Promise<void> {
+async function openPrint(page: Page, base: string, range: string | undefined, timeout: number, extraWait: number, expectedSlides: number): Promise<void> {
   const url = `${base}/print?print=true${range ? `&range=${encodeURIComponent(range)}` : ''}`
-  await page.goto(url, { waitUntil: 'networkidle', timeout })
+  if (page.url() !== url) await page.goto(url, { waitUntil: 'networkidle', timeout })
+  else await page.waitForLoadState('networkidle', { timeout })
   await page.emulateMedia({ colorScheme: 'light', media: 'screen' })
+  // Vite が初回に依存を最適化するとページを再読み込みする。枚数が揃うまで少し待って再試行する
+  // （/print は range を無視することがあるので、期待は「全枚数以上」ではなく「1 枚以上」で十分）
+  for (let i = 0; i < 10; i++) {
+    await page.waitForSelector('[data-slidev-no]', { timeout })
+    const n = await page.evaluate(() => document.querySelectorAll('.print-slide-container').length)
+    if (n >= Math.min(1, expectedSlides) && (await page.evaluate(() => document.readyState)) === 'complete') break
+    await page.waitForTimeout(1000)
+  }
   await page.waitForSelector('[data-slidev-no]', { timeout })
   await page.waitForSelector('.slidev-slide-loading', { state: 'detached', timeout }).catch(() => {})
   await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-waitfor]')).every((el) => el.querySelector(el.getAttribute('data-waitfor')!)), null, { timeout }).catch(() => {})
@@ -167,9 +211,13 @@ async function collectAssets(page: Page, capture: Capture, data: DeckData, base:
       if (!e.src || e.src.startsWith('data:')) continue
       const d = await fetchDataUrl(e.src)
       if (d === 'svg') {
-        // PptxGenJS の SVG 経路は壊れた PPTX を出すので撮影に回す（§4.3）。収集器が data-ppt-capture-id を付けている
+        // PptxGenJS の SVG 経路は壊れた PPTX を出すので撮影に回す（§4.3）。収集器が data-ppt-capture-id を付けている。
+        // 置き換えとして扱い、記録（reason: 'svg'）と名前（Replaced N）に出す
+        e.captureId = e.id
+        e.reason = 'svg'
+        e.source = 'replaced'
         const a = await shoot(e.id)
-        if (a) assets[e.src] = a
+        if (a) assets[e.id] = a
       } else if (d) assets[e.src] = d
     }
     const bg = data.slides[sc.no - 1]?.frontmatter?.background

@@ -1,7 +1,6 @@
 {
   "name": "slidev-addon-pptx",
   "version": "0.1.0",
-  "private": true,
   "description": "Slidev のスライドを PowerPoint で編集できる PPTX として書き出すアドオン（ネイティブ書き出し）",
   "type": "module",
   "engines": {
@@ -18,9 +17,6 @@
     ".": "./src/export.ts",
     "./*": "./*"
   },
-  "slidev": {
-    "defaults": {}
-  },
   "dependencies": {
     "@xmldom/xmldom": "^0.8.10",
     "jszip": "^3.10.1",
@@ -28,6 +24,7 @@
   },
   "peerDependencies": {
     "@slidev/cli": ">=52",
-    "playwright-chromium": ">=1.50"
+    "playwright-chromium": ">=1.50",
+    "vue": "^3.5"
   }
 }
