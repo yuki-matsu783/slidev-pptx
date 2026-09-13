@@ -64,13 +64,15 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - `dropped['code-highlight']` の単位（ブロックか行か）は設計に無いので、検査は下限だけ見る
 - e2e の viewport は Slidev と同じ「980 × 552 × 枚数」。待機列は `native-export.md` §1.2 を写し、UnoCSS の遅延注入を待つ段（`.slidev-layout` の padding が効く + `<style>` の長さが 500 ms 動かない）を足した（`tests/e2e/helpers.ts`）
 - xmldom は XML の行末正規化で `<a:t>` の CRLF を LF にする。後処理 5 の区切りは `\r\n | \r | \n` のどれでも
-- 往復の「等価」= 要素名・属性の集合・テキスト（行末を LF に揃え、空白だけのノードは無視）が再帰的に同じ（`tests/patch/pipeline.test.ts` の `firstDifference`）
+- 往復の「等価」= 要素名・属性の集合・テキスト（行末を LF に揃える）が再帰的に同じ。空白だけのテキストノード・コメント・XML 宣言は見ない（`tests/patch/pipeline.test.ts` の `firstDifference`）
+- e2e の待機は、デッキ由来のクラスが UnoCSS で生成されたことを番人にする（`plain.md` は `.pt-12` の `paddingTop: 48px`）。Slidev 自身の規則（`px-14`）はファイル変換時に展開されるので番人にならない。生成が来ない run は 30 秒で落ちる（黙って誤った値を測らない）
+- CLI の検査は `process.execPath` + `packages/slidev-addon-pptx/bin/slidev-pptx.mjs` で起動する（Windows の `.CMD` は Node 22 では `shell: true` 無しに spawn できない）
+- vitest の typecheck は `tests/tsconfig.json` を使う（ルートの `tsconfig.json` は範囲外）。`typescript` と `@types/node` が要る（フェーズ 4 の依存に含める）
 - `rebuildContentTypes` の拡張子 → ContentType は `jpg`/`jpeg` → `image/jpeg`、`webp` → `image/webp`（PptxGenJS 自身は `jpg` → `image/jpg` を出すが、IANA の型に揃える）
 - `LAYOUTS` は Slidev の px を保持し、`defineMasters` が `canvasWidth` で換算する。placeholder の `idx` は PptxGenJS の採番で 100 始まり
 - `notesText` は `[click]` の後ろの空白も詰める
 - `data-ppt-box` で一部の辺だけ指定した部品も `boxSource: 'prop'`
 - `transition` は `W-TRANSITION`（デッキで 1 回）と `dropped['transition']` の両方に出る（設計 §8.2 は表で警告に挙げつつ本文で「警告にしない」と書いていて矛盾している。design-feedback の候補）
-- CLI の検査は Windows では `node_modules/.bin/slidev-pptx.CMD` を起動する
 
 ## 設計へ書き戻す候補（design-feedback の子で出す）
 

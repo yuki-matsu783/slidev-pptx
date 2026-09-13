@@ -1,7 +1,7 @@
 // 後処理の列全体（native-export.md §3.1、§3.2）: 順番、何もしない Patch の往復、再圧縮、全部通したあとの OPC 検査
 import { describe, expect, it } from 'vitest'
 import JSZip from 'jszip'
-import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
+import { DOMParser } from '@xmldom/xmldom'
 import { PATCHES, postProcess, xmlPatch } from '../../packages/slidev-addon-pptx/src/patch/index'
 import type { Patch } from '../../packages/slidev-addon-pptx/src/patch/index'
 import { check } from '../../packages/slidev-addon-pptx/src/opc/check'
@@ -91,7 +91,8 @@ function parse(xml: string): Document {
   return new DOMParser().parseFromString(xml, 'application/xml') as unknown as Document
 }
 
-/** 2 つの要素を再帰的に比べ、最初の違いを文字列で返す。同じなら undefined */
+/** 2 つの要素を再帰的に比べ、最初の違いを文字列で返す。同じなら undefined。
+ *  空白だけのテキストノード・コメント・XML 宣言は見ない（PptxGenJS の出力には無い。`<a:t> </a:t>` を消す変換は検出できない） */
 function firstDifference(a: Element, b: Element, path = a.nodeName): string | undefined {
   if (a.nodeName !== b.nodeName) return `${path}: name ${a.nodeName} != ${b.nodeName}`
   const attrs = (e: Element) => Object.fromEntries(Array.from(e.attributes).map((x) => [x.name, x.value]).sort())
@@ -116,9 +117,6 @@ function firstDifference(a: Element, b: Element, path = a.nodeName): string | un
   }
   return undefined
 }
-
-// XMLSerializer は冪等性の it で使う（往復後のバイト列の比較は postProcess の中で行われる）
-void XMLSerializer
 
 /** ZIP のローカルヘッダを先頭から歩き、名前が / で終わらない最初の項目の圧縮方式（0 = STORE, 8 = DEFLATE）を返す */
 function firstFileMethod(buf: Buffer): number {

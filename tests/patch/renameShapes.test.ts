@@ -49,6 +49,21 @@ describe('patch/renameShapes', () => {
     expect(shapes.map((s) => cNvPrOf(s).getAttribute('name'))).toEqual(beforeNames)
   })
 
+  it('マスターの id も一意にする（fixture のマスターは図形 0 個なので、図形を 2 つ差し込んだ入力を作って通す）', async () => {
+    const { default: JSZip } = await import('jszip')
+    const zip = await JSZip.loadAsync(readFixturePptx())
+    const path = 'ppt/slideMasters/slideMaster1.xml'
+    const xml = await zip.file(path)!.async('string')
+    const sp = (id: number, name: string) => `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm></p:spPr><p:txBody><a:bodyPr/><a:p><a:r><a:rPr lang="ja-JP"/><a:t>m</a:t></a:r></a:p></p:txBody></p:sp>`
+    zip.file(path, xml.replace('</p:spTree>', `${sp(7, 'Logo')}${sp(7, 'Footer')}</p:spTree>`))
+    const input = await zip.generateAsync({ type: 'nodebuffer' })
+
+    const p = await openPptx(await runPatches([renameShapes], contextFor(), input))
+    const shapes = shapesOf(await p.xml(path))
+    expect(shapes.map((s) => Number(cNvPrOf(s).getAttribute('id')))).toEqual([2, 3])
+    expect(shapes.map((s) => cNvPrOf(s).getAttribute('name'))).toEqual(['Logo', 'Footer'])
+  })
+
   it('ノート（notesSlides）は対象外で、元の id のまま', async () => {
     const before = await openPptx(readFixturePptx())
     const after = await openPptx(await runPatches([renameShapes]))

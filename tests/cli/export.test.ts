@@ -13,18 +13,22 @@ import { contextFor } from '../patch/helpers'
 import { PLAIN } from '../e2e/helpers'
 
 const ROOT = resolve(here, '../..')
-// Windows では .bin の実体は sh スクリプトで、直に起動するには .CMD が要る（CLAUDE.md: Git Bash / WSL / Linux で動くこと）
-const BIN = resolve(ROOT, 'node_modules/.bin', process.platform === 'win32' ? 'slidev-pptx.CMD' : 'slidev-pptx')
+// .bin のリンク（pnpm install で作られる）。起動には使わない: Windows では .bin の実体は sh スクリプトで、
+// .CMD は Node 22 では shell: true 無しに spawn できない（CVE-2024-27980 の修正）。
+// 起動は process.execPath + パッケージの bin エントリで、OS と .bin のリンクから独立させる
+const BIN_LINK = resolve(ROOT, 'node_modules/.bin/slidev-pptx')
+const BIN_ENTRY = resolve(ROOT, 'packages/slidev-addon-pptx/bin/slidev-pptx.mjs')
 const tmp = () => mkdtempSync(join(tmpdir(), 'slidev-pptx-cli-'))
 
-function run(args: string[], timeout = 180_000) {
-  const r = spawnSync(BIN, args, { cwd: ROOT, encoding: 'utf8', timeout })
+function run(args: string[], cwd = ROOT, timeout = 180_000) {
+  const r = spawnSync(process.execPath, [BIN_ENTRY, ...args], { cwd, encoding: 'utf8', timeout })
   return { code: r.status, out: r.stdout, err: r.stderr }
 }
 
 describe('cli: 引数', () => {
-  it('bin slidev-pptx が workspace から解決できる', () => {
-    expect(existsSync(BIN)).toBe(true)
+  it('bin slidev-pptx が workspace から解決できる（pnpm install 後に .bin にリンクがある）', () => {
+    expect(existsSync(BIN_LINK) || existsSync(BIN_LINK + '.CMD')).toBe(true)
+    expect(existsSync(BIN_ENTRY)).toBe(true)
   })
   it('未知のサブコマンド / 未知のフラグは exit 2', () => {
     expect(run(['bogus']).code).toBe(2)
@@ -51,8 +55,8 @@ describe('cli: check', () => {
 describe('cli: export', () => {
   it('既定の出力名は ./slides-export.pptx、記録は <output>.report.json', () => {
     const dir = tmp()
-    const r = spawnSync(BIN, ['export', PLAIN, '--range', '1'], { cwd: dir, encoding: 'utf8', timeout: 180_000 })
-    expect(r.status).toBe(0)
+    const r = run(['export', PLAIN, '--range', '1'], dir)
+    expect(r.code).toBe(0)
     expect(existsSync(join(dir, 'slides-export.pptx'))).toBe(true)
     expect(existsSync(join(dir, 'slides-export.pptx.report.json'))).toBe(true)
   }, 200_000)

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Browser, Page } from 'playwright-chromium'
 import { collect } from '../../packages/slidev-addon-pptx/src/collect/index'
 import type { Capture, SlideCapture, TextElement, ImageElement, LineElement } from '../../packages/slidev-addon-pptx/src/types'
-import { PLAIN, launch, openPrint, startSlidev } from './helpers'
+import { PLAIN, PLAIN_READY, launch, openPrint, startSlidev } from './helpers'
 import type { Running } from './helpers'
 import { S, SLIDE_COUNT } from './slides'
 
@@ -22,7 +22,7 @@ const flat = (t: TextElement) => t.paragraphs.map((p) => p.runs.map((r) => r.tex
 beforeAll(async () => {
   server = await startSlidev(PLAIN)
   browser = await launch()
-  page = await openPrint(browser, server.base, { slides: SLIDE_COUNT })
+  page = await openPrint(browser, server.base, { slides: SLIDE_COUNT, ready: PLAIN_READY })
   capture = await page.evaluate(collect)
 }, 120_000)
 

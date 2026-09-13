@@ -11,6 +11,8 @@ import captureJson from '../fixtures/capture/basic.json'
 import dataJson from '../fixtures/capture/basic.data.json'
 
 const canvas = { width: 980, height: 552 }
+// build が capture / data を破壊的に触っても他の it に波及しないよう、毎回 clone を渡す
+const data = () => structuredClone(dataJson)
 const PNG_1x1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
 let p: OpenedPptx
@@ -21,7 +23,7 @@ let rels: Record<number, Document> = {}
 beforeAll(async () => {
   // build が Capture を破壊的に触っても他の it に波及しないよう、毎回 clone を渡す
   const capture = structuredClone(captureJson) as unknown as Capture
-  const r = await build(capture, dataJson, { assets: { 's2-e9': PNG_1x1 }, lang: 'ja-JP', layouts: dataJson.layouts })
+  const r = await build(capture, data(), { assets: { 's2-e9': PNG_1x1 }, lang: 'ja-JP', layouts: dataJson.layouts })
   ctx = r.ctx
   p = await openPptx(await r.pptx.write({ outputType: 'nodebuffer' }) as Buffer)
   for (let i = 1; i <= 5; i++) {
@@ -223,7 +225,7 @@ describe('convert: 画像・図形・線（§4.3）', () => {
   })
   it('assets に無い置き換えは灰色の矩形 + W-IMAGE', async () => {
     const capture = structuredClone(captureJson) as unknown as Capture
-    const r = await build(capture, dataJson, { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
+    const r = await build(capture, data(), { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
     expect(r.ctx.report.warnings.some((w) => w.code === 'W-IMAGE' && w.slide === 2)).toBe(true)
     const q = await openPptx(await r.pptx.write({ outputType: 'nodebuffer' }) as Buffer)
     expect(els(await q.xml('ppt/slides/slide2.xml'), 'p', 'pic')).toHaveLength(2)
@@ -275,9 +277,9 @@ describe('convert: PatchContext と Report（§4.5、§3.3、§8）', () => {
     big.fit = { contentHeight: 4720, boxHeight: 472 }
     const small = structuredClone(captureJson) as unknown as Capture
     ;(small.slides[2].elements[1] as { fit: { contentHeight: number; boxHeight: number } }).fit = { contentHeight: 500, boxHeight: 472 }
-    const a = await build(capture, dataJson, { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
+    const a = await build(capture, data(), { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
     expect(a.ctx.autofit[3]['Body 2']).toEqual({ fontScale: 25000, lnSpcReduction: 20000 })
-    const b = await build(small, dataJson, { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
+    const b = await build(small, data(), { assets: {}, lang: 'ja-JP', layouts: dataJson.layouts })
     expect(b.ctx.autofit[3]['Body 2']).toEqual({ fontScale: 94000, lnSpcReduction: 10000 })
   })
   it('はみ出し: x=-30 は 0 に寄せて w を縮め、W-OFFSLIDE（5 px 以上）', () => {

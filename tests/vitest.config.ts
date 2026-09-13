@@ -15,7 +15,8 @@ export default defineConfig({
     hookTimeout: 60_000, // convert.test の beforeAll は画像入りの PPTX を書く
     typecheck: {
       enabled: true,
-      include: ['tests/**/*.test-d.ts'], // 型の主張（expectTypeOf）はここでだけ効く
+      tsconfig: 'tests/tsconfig.json', // ルートに tsconfig.json は無い（置くのは範囲外）
+      include: ['tests/**/*.test-d.ts'], // 型の主張（expectTypeOf）はここでだけ効く。typescript と @types/node が要る
     },
   },
 })
