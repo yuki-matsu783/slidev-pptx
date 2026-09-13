@@ -94,7 +94,7 @@ PPTX: 名前をそのまま `<a:prstGeom prst>` に出し、調整値は後処�
 - 失うもの: スライドからはみ出して枠を縮めた図形は、PowerPoint では縮めた枠に調整値が効くので、形が Slidev とずれる（native-export.md §4.3）。
 - 失うもの（Slidev の画面と PPTX の既知の差。どれも直していない）:
   - `rotate` が 360 度以上: DOM は `rotate(390deg)` のまま描き、PPTX は `rot="1800000"`（30 度）に正規化される。見た目は同じ。
-  - 大きさ 0 の図形: PPTX に出ず、警告も出ない（§2.2 の 1「rect が空」は無警告で飛ばす）。
+  - `w` か `h` が 0 の図形: PPTX に出ない。部品は SVG と文字の div を子に持つので §2.2 の 1「rect が空」には当たらず Capture に入り、変換の `clampBox` が `w <= 0 || h <= 0` を `dropped` にして飛ばす。そのとき `W-HIDDEN` は出るが、文面は「スライドの外にあるので飛ばした」で、図形名（`name`）が付かず `elementId` だけ（名前を決める前に出すため）。
   - `w` か `h` を省いた図形: Slidev の SVG の大きさは `offsetWidth` / `offsetHeight`（整数 px）で描き、PPTX の枠は実測の小数なので、1 px 未満ずれる（最大 0.39 px を実測）。
 
 ### 1.4 `PptImage`
