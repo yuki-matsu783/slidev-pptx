@@ -40,9 +40,9 @@ Markdown で書くスライド
 
 <div v-click class="mt-4">クリックの文（v-click は装飾を持たない div）</div>
 
-![代替文字](/bg.png)
+<img src="/bg.png" alt="代替文字" width="120" height="30">
 
-[![リンクつき画像](/bg.png)](https://sli.dev)
+<a href="https://sli.dev"><img src="/bg.png" alt="リンクつき画像" width="120" height="30"></a>
 
 ---
 layout: two-cols
@@ -176,10 +176,11 @@ zoom: 0.8
 
 ## はみ出し
 
-<div style="position:absolute; left:-40px; top:200px; width:200px">左にはみ出した箱</div>
-<div style="position:absolute; left:900px; top:300px; width:200px">右にはみ出した箱</div>
-<div style="position:absolute; left:-300px; top:400px; width:100px">完全に外（W-HIDDEN）</div>
+<!-- 装飾（背景色）を付けて規則 13 の独立した枠にする。付けないと規則 12 で 1 枠に合併し、title の直後の body 候補になって placeholder に入る -->
+<div style="position:absolute; left:-40px; top:200px; width:200px; background:#eeeeee">左にはみ出した箱</div>
+<div style="position:absolute; left:900px; top:300px; width:200px; background:#eeeeee">右にはみ出した箱</div>
+<div style="position:absolute; left:-300px; top:400px; width:100px; background:#eeeeee">完全に外（W-HIDDEN）</div>
 <div style="opacity:0">見えない</div>
-<div style="position:absolute; left:300px; top:380px; width:300px; height:40px; overflow:hidden">
+<div style="position:absolute; left:300px; top:380px; width:300px; height:40px; overflow:hidden; background:#eeeeee">
   溢れる本文 1 行目<br>2 行目<br>3 行目<br>4 行目<br>5 行目<br>6 行目（W-OVERFLOW）
 </div>

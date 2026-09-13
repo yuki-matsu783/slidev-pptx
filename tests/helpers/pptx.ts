@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import JSZip from 'jszip'
 import { DOMParser } from '@xmldom/xmldom'
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url))
+const here = fileURLToPath(new URL('.', import.meta.url))
 
 export const NS = {
   p: 'http://schemas.openxmlformats.org/presentationml/2006/main',
@@ -15,7 +15,7 @@ export const NS = {
   ct: 'http://schemas.openxmlformats.org/package/2006/content-types',
 } as const
 
-export const FIXTURE_PPTX = resolve(__dirname, '../fixtures/pptx/sample.pptx')
+export const FIXTURE_PPTX = resolve(here, '../fixtures/pptx/sample.pptx')
 
 export function readFixturePptx(): Buffer {
   return readFileSync(FIXTURE_PPTX)

@@ -6,13 +6,13 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url))
+const here = fileURLToPath(new URL('.', import.meta.url))
 import { PATCHES, postProcess } from '../../packages/slidev-addon-pptx/src/patch/index'
 import { readFixturePptx } from '../helpers/pptx'
 import { contextFor } from '../patch/helpers'
 import { PLAIN } from '../e2e/helpers'
 
-const ROOT = resolve(__dirname, '../..')
+const ROOT = resolve(here, '../..')
 const BIN = resolve(ROOT, 'node_modules/.bin/slidev-pptx')
 const tmp = () => mkdtempSync(join(tmpdir(), 'slidev-pptx-cli-'))
 

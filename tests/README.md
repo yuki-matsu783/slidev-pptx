@@ -62,8 +62,15 @@ pnpm vitest run -c tests/vitest.e2e.config.ts    # e2e と CLI（playwright-chro
 - `dropped['code-highlight']` の単位（ブロックか行か）は設計に無いので、検査は下限だけ見る
 - e2e の viewport は Slidev と同じ「980 × 552 × 枚数」。待機列は `native-export.md` §1.2 を写した（`tests/e2e/helpers.ts`）
 
+## 設計へ書き戻す候補（design-feedback の子で出す）
+
+- ppt-components.md §2.2: 「`p` の中身が `img`（と空白）だけなら、その `p` ごと画像要素（区切りブロック）」の特例。
+  Markdown の `![]()` は `<p><img></p>` になり、今の規則では 11（`p`）が先に当たって 6（`img`）に届かない。
+  このデッキは裸の `<img>` で回避している
+- ppt-components.md §2.2 の 1: `hr` は高さ 0〜1 px なので、「rect が空」を `w === 0 || h === 0` で判定すると規則 10 に届かない
+
 ## フェーズ 4 で最初に確かめること
 
-- vitest が `tests/**` を ESM として動かすとき `import.meta.url` が取れること（`__dirname` は使っていない）
+- vitest が `tests/**` を ESM として動かすとき `import.meta.url` が取れること（`__dirname` は使わず `here` に統一）
 - `page.evaluate(collect)` の直列化（上の「1 関数の中に閉じる」）
 - `plain.md` の枚数は `tests/e2e/slides.ts` の `SLIDE_COUNT`（12）。`@slidev/parser` は `---` で始まる行を無条件に区切りにするので、水平線は `***` で書いてある

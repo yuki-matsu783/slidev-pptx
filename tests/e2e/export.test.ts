@@ -70,9 +70,12 @@ describe('exportPptx: plain.md', () => {
     const codes = new Set(report.warnings.map((w) => w.code))
     for (const c of ['W-CSS', 'W-MATH-INLINE', 'W-LI-BLOCK', 'W-LAYOUT', 'W-OVERFLOW', 'W-OFFSLIDE', 'W-IMAGE', 'W-HIDDEN', 'W-TRANSITION']) expect(codes.has(c), c).toBe(true)
     expect(report.warnings.filter((w) => w.code === 'W-TRANSITION')).toHaveLength(1)
-    expect(report.warnings.find((w) => w.code === 'W-IMAGE')?.slide).toBe(S.boxes)
-    expect(report.warnings.find((w) => w.code === 'W-OVERFLOW')?.slide).toBe(S.offslide)
-    expect(report.warnings.find((w) => w.code === 'W-LAYOUT')?.slide).toBe(S.section)
+    expect(report.warnings.some((w) => w.code === 'W-IMAGE' && w.slide === S.boxes)).toBe(true)
+    expect(report.warnings.some((w) => w.code === 'W-OVERFLOW' && w.slide === S.offslide)).toBe(true)
+    expect(report.warnings.some((w) => w.code === 'W-OFFSLIDE' && w.slide === S.offslide)).toBe(true)
+    // W-LAYOUT は section と image-right の両方で鳴る
+    expect(report.warnings.some((w) => w.code === 'W-LAYOUT' && w.slide === S.section)).toBe(true)
+    expect(report.warnings.some((w) => w.code === 'W-LAYOUT' && w.slide === S.imageRight)).toBe(true)
     for (const w of report.warnings) {
       expect(w.slide).toBeGreaterThanOrEqual(0)
       expect(typeof w.message).toBe('string')
@@ -105,10 +108,14 @@ describe('exportPptx: plain.md', () => {
     expect(report.warnings.some((w) => w.code === 'W-IMAGE' && w.slide === S.imageRight)).toBe(false)
   })
 
-  it('取得できない画像は灰色の矩形（W-IMAGE）で、pic にはならない', async () => {
+  it('取得できない画像は灰色の矩形（p:sp、W-IMAGE）で、pic にはならない', async () => {
     const doc = await p.xml(`ppt/slides/slide${S.boxes}.xml`)
-    const names = els(doc, 'p', 'cNvPr').map((c) => c.getAttribute('name'))
-    expect(names.some((n) => /\(missing\)/.test(n ?? '') || /^Image \d+$/.test(n ?? ''))).toBe(true)
+    // 置き換え画像（button / gradient / explicit）の 3 つだけが pic
+    expect(els(doc, 'p', 'pic')).toHaveLength(3)
+    const spTree = els(doc, 'p', 'spTree')[0]
+    const imageNamed = Array.from(spTree.childNodes).filter((n): n is Element => n.nodeType === 1 && /^Image \d+$/.test(els(n as Element, 'p', 'cNvPr')[0]?.getAttribute('name') ?? ''))
+    expect(imageNamed).toHaveLength(1)
+    expect(imageNamed[0].localName).toBe('sp')
   })
 
   it('ノートが段落に割れて入る', async () => {

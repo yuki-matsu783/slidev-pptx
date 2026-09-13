@@ -109,6 +109,8 @@ describe('collect: 箇条書きと run（§3.2、§3.4）', () => {
     expect(body.paragraphs.at(-1)?.kind).toBe('plain')
   })
   it('img（規則 6）: src は絶対 URL、alt。a > img は要素の link', () => {
+    // デッキは裸の <img> で書いてある。Markdown の ![]() は <p><img></p> になり、規則 11 が先に当たって
+    // 規則 6 に届かない（設計 §2.2 に「p の中身が img だけなら p ごと」の特例は無い。README の design-feedback 候補）
     const imgs = images(slide(S.bullets))
     expect(imgs).toHaveLength(2)
     expect(imgs[0].src).toMatch(/^http.*\/bg\.png$/)
@@ -160,7 +162,7 @@ describe('collect: 表と線（§3.5、§2.2 の 10）', () => {
     expect(tbl.rows[1][1].align).toBe('center')
     expect(tbl.rows[1][0].paragraphs[0].runs[0].code).toBe(true)
   })
-  it('hr は line 要素（実測の上辺、水平）', () => {
+  it('hr は line 要素（実測の上辺、水平）。高さ 0〜1 px なので、規則 1 の「rect が空」を w または h が 0 で判定すると届かないことに注意', () => {
     const line = slide(S.table).elements.find((e): e is LineElement => e.kind === 'line')!
     expect(line).toBeTruthy()
     expect(line.from.y).toBe(line.to.y)
@@ -256,10 +258,12 @@ describe('collect: zoom と はみ出し（§2.3、§2.2 の 1）', () => {
     expect(title.box.x).toBeCloseTo(56 * 0.8, 0)
     expect(title.paragraphs[0].runs[0].size).toBeCloseTo(30 * 0.8, 1)
   })
-  it('はみ出した箱は測ったままの負の座標で写す（寄せるのは Node）。完全に外は W-HIDDEN、opacity 0 も W-HIDDEN', () => {
+  it('はみ出した箱（装飾つき = 規則 13 の独立した枠）は測ったままの負の座標で写す（寄せるのは Node）。完全に外は W-HIDDEN、opacity 0 も W-HIDDEN', () => {
     const s = slide(S.offslide)
     const left = texts(s).find((t) => flat(t).includes('左にはみ出した'))!
     expect(left.box.x).toBeLessThan(0)
+    expect(left.roleHint).toBeUndefined()
+    expect(texts(s).some((t) => t.roleHint === 'body')).toBe(false)
     expect(texts(s).some((t) => flat(t).includes('完全に外'))).toBe(false)
     expect(s.warnings.filter((w) => w.code === 'W-HIDDEN').length).toBeGreaterThanOrEqual(2)
   })
