@@ -25,12 +25,13 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 | `fixtures/deck/plain.md` | 部品を使わない e2e 用デッキ（アドオン無しで起動する） | ppt-components §2.2 の 0〜15 |
 | `fixtures/deck/components.md` | PPT 部品のデッキ。フェーズ 4 まで `describe.skip` | ppt-components §1 |
 | `fixtures/deck/dark.md` | `colorSchema: dark`（`W-DARK`） | §1.2 |
-| `fixtures/deck/shapes.md` | PowerPoint の図形 187 種を並べたデッキ（格子 7 枚）と、調整値・反転・矢じり・文字の枠の見本 1 枚。目で確かめるギャラリーを兼ねる | ppt-components §1.3 |
+| `fixtures/deck/shapes.md` | PowerPoint の図形 187 種を並べたデッキ（格子 7 枚 + 調整値・反転・矢じり・文字の枠の見本 1 枚 + 境界の入力 1 枚（調整値の丸めと範囲外、知らない矢じりと図形））。目で確かめるギャラリーを兼ねる | ppt-components §1.3 |
 | `opc/check.test.ts` | C1〜C14 を「通る / 落ちる」の対で | §3.4 |
 | `patch/*.test.ts` | 後処理 1〜7 と 4a を 1 変換 1 ファイル。`pipeline.test.ts` は列の順、往復の同値、DEFLATE | §3.1、§3.2 |
 | `patch/applyShapeAdjust.test.ts` | 後処理 4a。`<a:avLst>` の置き換え（定義の avLst の順、整数に丸める）、定義に無い名前を書かない、名前が合わない図形と `p:sp` 以外を触らない、`adjust` が空なら既存の gd を残す、冪等 | §3.2 |
 | `build/*.test.ts` | 単位、名前、sanitize、マスター、フォント、ノート、レイアウト解決、Capture → XML | §4、§5、§6 |
 | `build/presets.test.ts` | 合成した Capture で図形 187 種（文字なし・文字あり、調整値・反転・矢じり付き）を build → 後処理 → OPC 検査に通す。`W-SHAPE` が出ない、prst が 187 種そろう、avLst が定義の順、OPC の error 0 | §3.2、§4.3 |
+| `shapes/adjust.test.ts` | 調整値の正規化（`src/shapes/adjust.ts`）。`normalizeAdjust`: 定義の名前は整数に丸めて残す（-0 は 0）、定義に無い名前・数でない値・丸めた後に 32 bit 整数の範囲外の値は捨てて `dropped` に入力の順で並べる、未知の図形名では全部捨てる。`radiusToAdj`: 半径 / 短辺 × 100000 を整数に丸めて 0〜50000 に収める、有限でない半径と短辺 0 以下は `undefined` | ppt-components §1.3、native-export §4.3 |
 | `shapes/geometry.test.ts` | 図形の評価器（`src/shapes/geometry.ts`）。名前と引数、187 種すべてが有限の座標を返す、演算子・円弧の向きと分割・文字の枠の座標（答えは定義の数式から手で導いた値）、レビューで直した不具合の回帰 | ppt-components §1.3 |
 | `e2e/collect.test.ts` | 収集器を `page.evaluate(collect)` で走らせる | ppt-components §2、§3 |
 | `e2e/components.test.ts` | PPT 部品のデッキ。アドオンの実装が入るまで `describe.skip` | ppt-components §1 |
