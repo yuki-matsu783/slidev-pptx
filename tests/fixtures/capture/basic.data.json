@@ -1,0 +1,11 @@
+{
+  "config": { "canvasWidth": 980, "aspectRatio": 1.7777777777777777, "title": "受入テスト", "author": "tests" },
+  "layouts": ["cover", "default", "center", "two-cols", "section", "image-right", "intro"],
+  "slides": [
+    { "index": 0, "frontmatter": { "layout": "cover", "background": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" }, "note": "1 行目\n[click] 2 行目\n- 箇条書き", "title": "表紙" },
+    { "index": 1, "frontmatter": {}, "note": "", "title": "本文" },
+    { "index": 2, "frontmatter": { "layout": "two-cols" }, "note": "", "title": "2 段組" },
+    { "index": 3, "frontmatter": { "layout": "section", "background": "#1e293b" }, "note": "", "title": "章" },
+    { "index": 4, "frontmatter": { "layout": "typo-layout" }, "note": "", "title": "綴り違い" }
+  ]
+}
