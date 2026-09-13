@@ -3,9 +3,10 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { build } from '../../packages/slidev-addon-pptx/src/build/convert'
 import type { PatchContext } from '../../packages/slidev-addon-pptx/src/patch/index'
-import type { Capture } from '../../packages/slidev-addon-pptx/src/types'
+import { PATCHES, postProcess } from '../../packages/slidev-addon-pptx/src/patch/index'
+import type { Capture, DeckData, ShapeElement, SlideCapture } from '../../packages/slidev-addon-pptx/src/types'
 import { emu, inch, pt } from '../../packages/slidev-addon-pptx/src/build/units'
-import { openPptx, els, shapesOf, cNvPrOf, textOf } from '../helpers/pptx'
+import { openPptx, els, shapesOf, shapeNamed, cNvPrOf, textOf } from '../helpers/pptx'
 import type { OpenedPptx } from '../helpers/pptx'
 import captureJson from '../fixtures/capture/basic.json'
 import dataJson from '../fixtures/capture/basic.data.json'
@@ -15,6 +16,7 @@ const canvas = { width: 980, height: 552 }
 const data = () => structuredClone(dataJson)
 const PNG_1x1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
+let raw: Buffer
 let p: OpenedPptx
 let ctx: PatchContext
 let slide: Record<number, Document> = {}
@@ -25,7 +27,8 @@ beforeAll(async () => {
   const capture = structuredClone(captureJson) as unknown as Capture
   const r = await build(capture, data(), { assets: { 's2-e9': PNG_1x1 }, lang: 'ja-JP', layouts: dataJson.layouts })
   ctx = r.ctx
-  p = await openPptx(await r.pptx.write({ outputType: 'nodebuffer' }) as Buffer)
+  raw = await r.pptx.write({ outputType: 'nodebuffer' }) as Buffer
+  p = await openPptx(raw)
   for (let i = 1; i <= 5; i++) {
     slide[i] = await p.xml(`ppt/slides/slide${i}.xml`)
     rels[i] = await p.xml(`ppt/slides/_rels/slide${i}.xml.rels`)
@@ -235,19 +238,21 @@ describe('convert: 画像・図形・線（§4.3）', () => {
 describe('convert: 図形の種類・調整値・反転・矢じり（slide 4）', () => {
   const sp = (name: string) => shapesOf(slide[4]).find((s) => cNvPrOf(s).getAttribute('name') === name)!
   const xfrm = (name: string) => els(sp(name), 'a', 'xfrm')[0]
-  const shapeWarnings = () => ctx.report.warnings.filter((w) => w.code === 'W-SHAPE' && w.slide === 4)
+  const shapeWarnings = (id: string) => ctx.report.warnings.filter((w) => w.code === 'W-SHAPE' && w.slide === 4 && w.elementId === id)
 
-  it('shapeNames: 自由配置の見出しのあとに図形 4 つ', () => {
-    expect(ctx.shapeNames[4]).toEqual(['Text 1', 'Shape 2', 'Shape 3', 'Shape 4', 'Shape 5'])
+  it('shapeNames: 自由配置の見出しのあとに図形 6 つ', () => {
+    expect(ctx.shapeNames[4]).toEqual(['Text 1', 'Shape 2', 'Shape 3', 'Shape 4', 'Shape 5', 'Shape 6', 'Shape 7'])
   })
   it('PptxGenJS の ShapeType に無いコネクタ（bentConnector3）と foldedCorner も prst 名のまま出る', () => {
     expect(els(sp('Shape 2'), 'a', 'prstGeom')[0].getAttribute('prst')).toBe('bentConnector3')
     expect(els(sp('Shape 3'), 'a', 'prstGeom')[0].getAttribute('prst')).toBe('foldedCorner')
     expect(textOf(sp('Shape 3'))).toBe('メモ')
   })
-  it('未知の名前は rect + W-SHAPE（調整値も捨てる）', () => {
+  it('未知の名前は rect + W-SHAPE 1 件（調整値も捨てたと書く）', () => {
     expect(els(sp('Shape 4'), 'a', 'prstGeom')[0].getAttribute('prst')).toBe('rect')
-    expect(shapeWarnings().filter((w) => w.elementId === 's4-e4').length).toBeGreaterThanOrEqual(1)
+    const ws = shapeWarnings('s4-e4')
+    expect(ws.length).toBe(1)
+    expect(ws[0].message).toContain('調整値も捨てた')
     expect(ctx.adjust[4]['Shape 4']).toBeUndefined()
   })
   it('flipH / flipV は xfrm に（文字あり = addText、文字なし = addShape の両方）', () => {
@@ -257,26 +262,89 @@ describe('convert: 図形の種類・調整値・反転・矢じり（slide 4）
     expect(xfrm('Shape 5').getAttribute('flipV')).toBe('1')
     expect(xfrm('Shape 2').hasAttribute('flipH')).toBe(false)
   })
-  it('arrow の head / tail は headEnd / tailEnd に（知らない値は arrow）', () => {
+  it('arrow の head / tail は headEnd / tailEnd に（知らない値は arrow にして W-SHAPE）', () => {
     const ln = els(sp('Shape 2'), 'a', 'ln')[0]
     expect(els(ln, 'a', 'headEnd')[0].getAttribute('type')).toBe('triangle')
     expect(els(ln, 'a', 'tailEnd')[0].getAttribute('type')).toBe('arrow')
+    expect(shapeWarnings('s4-e2').filter((w) => w.message.includes('bogus'))).toHaveLength(1)
+    expect(shapeWarnings('s4-e3').some((w) => w.message.includes('矢じり'))).toBe(false)
   })
   it('adj は整数に丸めて ctx.adjust に入り、定義の avLst に無いキーは捨てて W-SHAPE', () => {
     expect(ctx.adjust[4]['Shape 2']).toEqual({ adj1: 25000 })
-    const w = shapeWarnings().find((x) => x.elementId === 's4-e2')!
+    const w = shapeWarnings('s4-e2').find((x) => x.message.includes('foo'))!
     expect(w).toMatchObject({ name: 'Shape 2' })
-    expect(w.message).toContain('foo')
   })
-  it('roundRect で adj.adj があるとき rectRadius の gd は出ない（後処理が書く）', () => {
+  it('32 bit 整数の範囲外の adj は捨てて W-SHAPE', () => {
+    expect(ctx.adjust[4]['Shape 3']).toBeUndefined()
+    expect(shapeWarnings('s4-e3')).toHaveLength(1)
+  })
+  it('roundRect で adj.adj があるときは radius より adj が勝ち、rectRadius の gd は出ない（後処理が書く）', () => {
     expect(els(sp('Shape 5'), 'a', 'prstGeom')[0].getAttribute('prst')).toBe('roundRect')
     expect(els(sp('Shape 5'), 'a', 'gd')).toHaveLength(0)
     expect(ctx.adjust[4]['Shape 5']).toEqual({ adj: 30000 })
   })
-  it('調整値の無い図形は ctx.adjust に入らない（slide 2 の roundRect は rectRadius のまま）', () => {
-    expect(ctx.adjust[2]).toBeUndefined()
+  it('roundRect の radius（px）は rectRadius を使わず、寄せた後の枠の短辺で adj に換算する', () => {
+    // slide 2: 100×40、radius 8 → 8 / 40
+    expect(ctx.adjust[2]).toEqual({ 'Shape 7': { adj: 20000 } })
+    const rr = shapesOf(slide[2]).find((s) => els(s, 'a', 'prstGeom')[0]?.getAttribute('prst') === 'roundRect' && textOf(s) === '')!
+    expect(els(rr, 'a', 'gd')).toHaveLength(0)
+    // radius 0 は 0（PptxGenJS の rectRadius は 0 を捨てて PowerPoint の既定の角丸になる）
+    expect(ctx.adjust[4]['Shape 6']).toEqual({ adj: 0 })
+    expect(els(sp('Shape 6'), 'a', 'gd')).toHaveLength(0)
+    // x=-40 w=100 h=80 → 寄せて 60×80、radius 10 → 10 / 60
+    expect(ctx.adjust[4]['Shape 7']).toEqual({ adj: 16667 })
+  })
+  it('後処理のあと、avLst の gd は ctx.adjust の値になる', async () => {
+    const q = await openPptx(await postProcess(raw, PATCHES, ctx))
+    const s2 = await q.xml('ppt/slides/slide2.xml')
+    const s4 = await q.xml('ppt/slides/slide4.xml')
+    expect(gdsOf(s2, 'Shape 7')).toEqual([['adj', 'val 20000']])
+    expect(gdsOf(s4, 'Shape 2')).toEqual([['adj1', 'val 25000']])
+    expect(gdsOf(s4, 'Shape 5')).toEqual([['adj', 'val 30000']])
+    expect(gdsOf(s4, 'Shape 6')).toEqual([['adj', 'val 0']])
+    expect(gdsOf(s4, 'Shape 7')).toEqual([['adj', 'val 16667']])
   })
 })
+
+describe('convert: 合成の Capture（範囲指定・調整値の範囲）', () => {
+  const shape = (id: string, o: Partial<ShapeElement> = {}): ShapeElement => ({
+    id, name: '', source: 'ppt', kind: 'shape', shape: 'roundRect',
+    box: { x: 10, y: 10, w: 100, h: 40 }, boxSource: 'prop', frame: { fill: { color: '#dddddd' }, inset: [0, 0, 0, 0] }, ...o,
+  })
+  const slideOf = (no: number, elements: ShapeElement[]): SlideCapture => ({ no, lang: 'ja-JP', zoom: 1, backgroundColor: '#ffffff', elements, warnings: [] })
+  const deck = (n: number): DeckData => ({ slides: Array.from({ length: n }, (_, i) => ({ index: i, frontmatter: {} })), layouts: ['default'] })
+  const run = async (slides: SlideCapture[], n: number) => {
+    const r = await build({ canvas, slides }, deck(n), { assets: {}, lang: 'ja-JP', layouts: ['default'] })
+    return { ctx: r.ctx, out: await postProcess((await r.pptx.write({ outputType: 'nodebuffer' })) as Buffer, PATCHES, r.ctx) }
+  }
+
+  it('スライド番号が連番でない（範囲指定の 3 と 5）とき、ctx.adjust は PPTX の番号で引け、slide2.xml に gd が入る', async () => {
+    const { ctx: c, out } = await run([slideOf(3, [shape('s3-e1', { adj: { adj: 11111 } })]), slideOf(5, [shape('s5-e1', { shape: 'chevron', adj: { adj: 22222 } })])], 5)
+    expect(Object.keys(c.adjust).sort()).toEqual(['1', '2'])
+    const q = await openPptx(out)
+    expect(gdsOf(await q.xml('ppt/slides/slide1.xml'), 'Shape 1')).toEqual([['adj', 'val 11111']])
+    expect(gdsOf(await q.xml('ppt/slides/slide2.xml'), 'Shape 1')).toEqual([['adj', 'val 22222']])
+  })
+
+  it('adj は丸めてから 32 bit 整数の範囲で判定し、外は捨てて W-SHAPE', async () => {
+    const values = [2147483647.4, 2147483647.5, -2147483648.4, -2147483649, 1e21]
+    const { ctx: c } = await run([slideOf(1, values.map((v, i) => shape(`s1-e${i + 1}`, { shape: 'foldedCorner', adj: { adj: v } })))], 1)
+    expect(c.adjust[1]).toEqual({ 'Shape 1': { adj: 2147483647 }, 'Shape 3': { adj: -2147483648 } })
+    expect(c.report.warnings.filter((w) => w.code === 'W-SHAPE').map((w) => w.elementId)).toEqual(['s1-e2', 's1-e4', 's1-e5'])
+  })
+
+  it('roundRect の radius の換算は定義の pin（0〜50000）に収める', async () => {
+    const { ctx: c } = await run([slideOf(1, [
+      shape('s1-e1', { frame: { radius: 30, inset: [0, 0, 0, 0] } }),
+      shape('s1-e2', { frame: { radius: -5, inset: [0, 0, 0, 0] } }),
+    ])], 1)
+    expect(c.adjust[1]).toEqual({ 'Shape 1': { adj: 50000 }, 'Shape 2': { adj: 0 } })
+  })
+})
+
+function gdsOf(doc: Document, name: string): (string | null)[][] {
+  return els(els(shapeNamed(doc, name)!, 'a', 'prstGeom')[0], 'a', 'gd').map((g) => [g.getAttribute('name'), g.getAttribute('fmla')])
+}
 
 describe('convert: 背景（§5.5）', () => {
   it('背景色は bg の srgbClr', () => {
