@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { build } from '../../packages/slidev-addon-pptx/src/build/convert'
 import type { PatchContext } from '../../packages/slidev-addon-pptx/src/patch/index'
 import { PATCHES, postProcess } from '../../packages/slidev-addon-pptx/src/patch/index'
-import type { Capture, DeckData, ShapeElement, SlideCapture } from '../../packages/slidev-addon-pptx/src/types'
+import type { Capture, DeckData, LineElement, ShapeElement, SlideCapture } from '../../packages/slidev-addon-pptx/src/types'
 import { emu, inch, pt } from '../../packages/slidev-addon-pptx/src/build/units'
 import { openPptx, els, shapesOf, shapeNamed, cNvPrOf, textOf } from '../helpers/pptx'
 import type { OpenedPptx } from '../helpers/pptx'
@@ -311,7 +311,7 @@ describe('convert: 合成の Capture（範囲指定・調整値の範囲）', ()
     id, name: '', source: 'ppt', kind: 'shape', shape: 'roundRect',
     box: { x: 10, y: 10, w: 100, h: 40 }, boxSource: 'prop', frame: { fill: { color: '#dddddd' }, inset: [0, 0, 0, 0] }, ...o,
   })
-  const slideOf = (no: number, elements: ShapeElement[]): SlideCapture => ({ no, lang: 'ja-JP', zoom: 1, backgroundColor: '#ffffff', elements, warnings: [] })
+  const slideOf = (no: number, elements: SlideCapture['elements']): SlideCapture => ({ no, lang: 'ja-JP', zoom: 1, backgroundColor: '#ffffff', elements, warnings: [] })
   const deck = (n: number): DeckData => ({ slides: Array.from({ length: n }, (_, i) => ({ index: i, frontmatter: {} })), layouts: ['default'] })
   const run = async (slides: SlideCapture[], n: number) => {
     const r = await build({ canvas, slides }, deck(n), { assets: {}, lang: 'ja-JP', layouts: ['default'] })
@@ -339,6 +339,23 @@ describe('convert: 合成の Capture（範囲指定・調整値の範囲）', ()
       shape('s1-e2', { frame: { radius: -5, inset: [0, 0, 0, 0] } }),
     ])], 1)
     expect(c.adjust[1]).toEqual({ 'Shape 1': { adj: 50000 }, 'Shape 2': { adj: 0 } })
+  })
+
+  it('線の知らない矢じりも arrow にして W-SHAPE（図形と同じ文面）。知っている値と none だけなら出さない', async () => {
+    const line = (id: string, y: number, head?: string, tail?: string): LineElement => ({
+      id, name: '', source: 'ppt', kind: 'line', box: { x: 10, y, w: 200, h: 0 }, boxSource: 'prop',
+      from: { x: 10, y }, to: { x: 210, y }, line: { color: '#000000', width: 1, dash: 'solid', head, tail },
+    })
+    const { ctx: c, out } = await run([slideOf(1, [line('s1-e1', 100, 'foo', 'bar'), line('s1-e2', 200, 'stealth', 'none')])], 1)
+    const ws = c.report.warnings.filter((w) => w.code === 'W-SHAPE')
+    expect(ws).toHaveLength(1)
+    expect(ws[0]).toMatchObject({ elementId: 's1-e1', slide: 1, message: '矢じり foo, bar は PowerPoint に無いので arrow にした' })
+    const doc = await (await openPptx(out)).xml('ppt/slides/slide1.xml')
+    const lines = shapesOf(doc).filter((s) => els(s, 'a', 'prstGeom')[0]?.getAttribute('prst') === 'line')
+    expect(lines).toHaveLength(2)
+    const ends = (s: Element) => [els(s, 'a', 'headEnd')[0]?.getAttribute('type'), els(s, 'a', 'tailEnd')[0]?.getAttribute('type')]
+    expect(ends(lines[0])).toEqual(['arrow', 'arrow'])
+    expect(ends(lines[1])[0]).toBe('stealth')
   })
 })
 
