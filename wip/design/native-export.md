@@ -351,7 +351,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 | 種類 | 呼び出し |
 |---|---|
 | shape | 文字があれば `addText(paragraphs, { shape, fill, line, rotate, flipH, flipV, x y w h })`、無ければ `addShape(shape, { fill, line, rotate, flipH, flipV, x y w h, hyperlink })`。`shape` は下の「図形の名前と調整値」で決める。`shape` と `fill` の同時指定は実測で `<a:prstGeom>` と塗りが両方出る。**要素リンクを `addText` に渡さない**: `addText` の `hyperlink` は run の分しか rels に登録せず、`<a:hlinkClick r:id="rIdundefined">` が出る（実測。C10 で必ず落ちる）。文字のある図形と、`a` で囲まれたテキスト枠の `link` は全 run の `hyperlink` に付ける（下線つきになる） |
-| line | `addShape(ShapeType.line, { x y w h, line: { color, width, dashType, beginArrowType, endArrowType }, flipV })`。`from/to` から `x y w h` と `flipV` を決める |
+| line | `addShape(ShapeType.line, { x y w h, line: { color, width, dashType, beginArrowType, endArrowType }, flipV })`。`from/to` から `x y w h` と `flipV` を決める（`PptShape` の `flipH` `flipV` prop は線では無視する）。`head` `tail` の値が `none` `arrow` `diamond` `oval` `stealth` `triangle` に無ければ `arrow` にして `W-SHAPE`（図形と同じ） |
 | image | `addImage({ data: 'data:image/png;base64,…', x y w h, altText, sizing, hyperlink })`。`fit: 'contain' \| 'cover'` → `sizing: { type, w, h }`、`'fill'` と未指定 → `sizing` 無し（`type: 'fill'` を渡すと `addImage` は通るが `write()` が `TypeError` で落ちる。実測）。`addImage` の `hyperlink` は自前で rels を登録するので使える。URL は Node が fetch し、失敗したら `W-IMAGE` を出して灰色の矩形（`rect`）を置く |
 | image（SVG） | `src` の拡張子または `content-type` が SVG なら `addImage` に渡さず、その `<img>` を撮影に回す（`data-ppt-capture-id` を振って `locator.screenshot()`）。PptxGenJS の SVG 経路は `image-N.png` の中身に SVG を書くので壊れた PPTX になる（`addImageDefinition` の `isSvgPng`）。置き換え一覧に `reason: 'svg'` で載せる |
 | table | `addTable(rows, { x y w h, colW: EMU[], rowH: EMU[] })`。表の高さは `rowH` の和で決まるので、寄せた枠（`box.h`）より高いときは各 `rowH` を比例で縮め、`h` には縮めた後の和を渡す。`headerRows` は**渡さない**（PptxGenJS に `<a:tblPr firstRow>` を出す口が無い。見出し行は Capture の太さ・塗りで表す。実測）。セルは `{ text: TextProps[], options: { colspan, rowspan, fill, align, valign, border, margin } }`。`border` は **4 辺必ず埋める**（未指定の辺は PptxGenJS が `DEF_CELL_BORDER`（solid / 666666 / 1 pt）で補うので、線の無い辺を明示しないと罫線が増える。`undefined` があっても落ちはしない。実測）: `width: 0` → `{ type: 'none' }`、それ以外 → `{ type: 'solid', pt: pt(width), color }`。順序は **上右下左**（テキスト枠の `margin` と違う。実測）。`margin` は上右下左の pt。**上の値が 1 未満だと 4 辺ともインチ扱いになる**（PptxGenJS の `cellMargin[0] >= 1` の分岐）ので、上は 1 pt に切り上げる。空白の `hMerge/vMerge` は PptxGenJS が作る |
@@ -359,7 +359,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 
 **図形の名前と調整値**（`convert.ts` の `addShape`）:
 - `shape` が PowerPoint の図形の定義（`src/shapes/presets.ts` の 187 種。`isPreset`）にあれば、名前を PptxGenJS の `ShapeType` を通さずそのまま渡す（PptxGenJS は `'<a:prstGeom prst="' + shape + '">'` と書く）。`ShapeType` に無いコネクタ 9 種と、`ShapeType` で綴りを誤っている `foldedCorner` もこれで出る。定義に無ければ `rect` にし、調整値も捨てて `W-SHAPE`。
-- 調整値: `adj` を定義の avLst の名前に絞り、整数に丸めて `ctx.adjust[PPTX の番号][図形名]` に積む。後処理 4a が `<a:avLst>` に書く。定義に無い名前・数でない値・丸めて 32 bit 整数（`ST_Coordinate32`）の範囲外の値は捨てて `W-SHAPE`（範囲外は PowerPoint が「修復」に掛ける）。
+- 調整値: `adj` を `normalizeAdjust`（`src/shapes/`。Slidev の描画と共通）で定義の avLst の名前に絞り、整数に丸めて `ctx.adjust[PPTX の番号][図形名]` に積む。後処理 4a が `<a:avLst>` に書く。定義に無い名前・数でない値・丸めて 32 bit 整数（`ST_Coordinate32`）の範囲外の値は捨てて `W-SHAPE`（範囲外は PowerPoint が「修復」に掛ける）。
 - `roundRect` の角丸: `frame.radius`（px）を `rectRadius` に渡さず、`adj.adj` に換算する（角の半径 = 短辺 × `adj` / 100000。`PptShape.vue` と同じ式）。上の絞り込みで捨てられなかった `adj.adj`（有限で、丸めて 32 bit 整数に収まる）があればそちらが勝つ（`PptShape.vue` も同じ判定）。PptxGenJS は `rectRadius` が 0 だと捨てて（`if (rectRadius)`）PowerPoint の既定の角丸になるので、0 を保つためにこちらにした。短辺は**寄せた後の枠**（§4.1）で取り、px の半径を保つ。値は定義の `pin 0 adj 50000` に合わせて 0〜50000 に収める。テキスト枠（`PptText` などの `frame.radius`）は今までどおり `rectRadius`（§4.2）。
 - 反転: `flipH` `flipV` は `true` のときだけオプションに渡す（`<a:xfrm flipH flipV>`）。
 - 矢じり: `arrow.head` → `line.beginArrowType`、`arrow.tail` → `line.endArrowType`。値は `none` `arrow` `diamond` `oval` `stealth` `triangle` のどれかで、それ以外は `arrow` にして `W-SHAPE`。
@@ -587,7 +587,7 @@ interface Report {
 | `W-DARK` | ダークテーマ固定のデッキを測った色のまま出した |
 | `W-HIDDEN` | 表示されていない要素を飛ばした（`display:none` 以外の理由: キャンバス外、opacity 0、寄せた結果 w か h が 0 以下） |
 | `W-LINK` | リンクを外した。出すのは次の 2 つ: 相対パスや数字でないアンカー（開発サーバの URL に解決されて PPTX に残るため。ppt-components.md §3.4）／ `--range` の範囲外のスライドへの内部リンク（PptxGenJS の `hyperlink.slide` は PPTX の中の順番で、外さないと rels が実在しない `slideN.xml` を指して C4 で止まる。実測） |
-| `W-SHAPE` | `PptShape` の図形を定義どおりに出せなかった。出すのは次の 3 つ: 図形の名前が定義（187 種）に無いので `rect` にした（調整値も捨てた）／ 調整値のうち、定義の avLst に無い名前・数でない値・32 bit 整数の範囲外の値を捨てた ／ 矢じりの値が PowerPoint に無いので `arrow` にした（§4.3） |
+| `W-SHAPE` | `PptShape` の図形を定義どおりに出せなかった。出すのは次の 3 つ: 図形の名前が定義（187 種）に無いので `rect` にした（調整値も捨てた）／ 調整値のうち、定義の avLst に無い名前・数でない値・32 bit 整数の範囲外の値を捨てた ／ 矢じりの値が PowerPoint に無いので `arrow` にした（図形と `type="line"` の線の両方。§4.3） |
 | `W-INLINE` | 段落の中の `svg` `img` `table` `pre` `.katex-display` など、枠の単位でしか置き換えられないものを無視した（ppt-components.md §2.2 の 11） |
 | `W-RENDER` | 描画の失敗。出すのは次の 3 つ: Slidev がスライドの描画に失敗している（収集器がエラー表示の要素を見つけた。そのスライドの番号）／ ブラウザの `console.error` か `pageerror`（slide 0）／ UnoCSS のクラスが効かないまま測った（§1.2。slide 0） |
 
@@ -613,7 +613,7 @@ packages/slidev-addon-pptx/
   src/collect/index.ts    ブラウザで動く収集器。Vue にも Node にも依存しない 1 ファイル。`export function collect(): Capture` を page.evaluate に渡す
   src/build/              masters.ts（`LAYOUTS` `defineMasters` `masterFor` = §5.1 の 2 段目）、layout.ts（`resolveLayout(slideIndex, data, layouts)` = §5.1 の 1 段目）、convert.ts（`build(capture, data): { pptx, ctx }`）、units.ts（§4.1。`emu` `pt` `inch` `clampBox` `toDashType` と、`textMargin()` = [l,r,b,t] / `cellMargin()` = [t,r,b,l] の 2 関数）、fonts.ts（`fontFor` `themeFonts`。§6）、names.ts（`assignNames`。§4.5）、sanitize.ts（`sanitizeXmlText`）、notes.ts（`notesText(note)`。§4.4）
   src/patch/              zip.ts（ZipView と、rels を `Type` で引く `findRelByType(relsDoc, type)`。§5.4）、patches/*.ts（§3.2 の 1 変換 1 ファイル、各ファイルが `Patch` を 1 つ export）、index.ts（`PATCHES: Patch[]` と `postProcess`）
-  src/shapes/             presets.ts（PowerPoint の図形 187 種の定義。scripts/gen-presets.mjs の生成物で手で直さない。docs/adr/0002）、types.ts（定義の型）、geometry.ts（`PRESET_NAMES` `isPreset` `evalPreset`。定義を枠の大きさで評価して SVG の path と文字の枠を返す。DOM に依存しない。PptShape.vue と convert.ts と後処理 4a が使う）
+  src/shapes/             presets.ts（PowerPoint の図形 187 種の定義。scripts/gen-presets.mjs の生成物で手で直さない。docs/adr/0002）、types.ts（定義の型）、geometry.ts（`PRESET_NAMES` `isPreset` `evalPreset`。定義を枠の大きさで評価して SVG の path と文字の枠を返す。DOM に依存しない。PptShape.vue と convert.ts が使う）、`normalizeAdjust`（調整値の正規化。定義に無いキー・数でない値・丸めた後に 32 bit 整数の範囲外の値を捨て、整数に丸める。PptShape.vue と convert.ts が同じ判定を使う）。後処理 4a（applyShapeAdjust.ts）が import するのは presets.ts だけ
   scripts/gen-presets.mjs presetShapeDefinitions.xml → src/shapes/presets.ts
   src/opc/check.ts        `export function check(buf: Buffer): Promise<CheckResult[]>`（§3.4）
   src/cli.ts              §7

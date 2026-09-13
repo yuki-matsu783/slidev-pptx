@@ -51,8 +51,8 @@ props を「書式の上書き」に絞り、Markdown の中身は slot に任�
 | prop | 型 | 既定 | 意味 |
 |---|---|---|---|
 | `type` | `string`（PowerPoint の図形の名前。187 種） | `'rect'` | ECMA-376 の `prst` 名をそのまま使う（`rect` `roundRect` `ellipse` `rightArrow` `wedgeRectCallout` `flowChartDecision` `bentConnector3` など。一覧は `src/shapes/presets.ts` のキーと、全種を並べたデッキ `tests/fixtures/deck/shapes.md`）。`line` だけは対角線（下の描画）。未知の名前は `console.warn`（名前ごとに 1 回）を出して `rect` で描き、書き出しでも `rect` にして `W-SHAPE` |
-| `adj` | `Record<string, number>` | なし | 調整値。キーは定義の `avLst` の名前（`adj` `adj1` …）、値は ECMA の単位（例 `50000`。大半は 100000 分率、角度は 60000 分の 1 度。何に対する比かは図形ごとに定義の数式が決める）。指定しないキーは定義の既定 |
-| `flipH` `flipV` | `boolean` | `false` | 左右・上下反転。図形は反転し、文字は左右反転しない。`flipV` のとき文字は 180 度回る（PowerPoint と同じ） |
+| `adj` | `Record<string, number>` | なし | 調整値。キーは定義の `avLst` の名前（`adj` `adj1` …）、値は ECMA の単位（例 `50000`。大半は 100000 分率、角度は 60000 分の 1 度。何に対する比かは図形ごとに定義の数式が決める）。指定しないキーは定義の既定。定義に無いキー・数でない値・丸めた後に 32 bit 整数の範囲外の値は捨て、残りは整数に丸める。この判定は `src/shapes/` の共通の関数 `normalizeAdjust` 1 つにまとめ、**Slidev の描画と PPTX の変換が同じ値を使う**（同じ入力なら同じ形になる）。捨てた値は書き出しで `W-SHAPE` |
+| `flipH` `flipV` | `boolean` | `false` | 左右・上下反転。図形は反転し、文字は左右反転しない。`flipV` のとき文字は 180 度回る（PowerPoint と同じ）。**`type: 'line'` では無視する**（Slidev の描画でも PPTX でも。線の向きは `x y w h` で決まる） |
 | `fill` | `string \| 'none'` | `'#ffffff'` | 塗り。`'none'` で塗りなし |
 | `line` | `string \| 'none' \| { color, width, dash, head, tail }` | `'#000000'`（1 px） | 線。`'none'` で線なし。`head` `tail` は `'none' \| 'arrow' \| 'stealth' \| 'triangle' \| 'oval' \| 'diamond'`。**`line` 以外の図形でも効き**、開いた path（`Z` で閉じない輪郭。コネクタ・円弧・かっこなど）の始点（`head`）と終点（`tail`）に付く |
 | `radius` | `number`（px） | 8 | `roundRect` の角丸。定義の式（角の半径 = 短辺 × `adj` / 100000）で `adj.adj` に換算する。`adj.adj` は、有限で、丸めて 32 bit 整数に収まるときだけ `radius` に勝つ（書き出しの変換と同じ判定。native-export.md §4.3） |
@@ -72,7 +72,7 @@ props を「書式の上書き」に絞り、Markdown の中身は slot に任�
 - SVG の viewBox は枠の実寸 px で、引き伸ばさない（形が縦横比で変わるため）。大きさは `w` `h` があればそれ、無い辺は ResizeObserver で測る。SVG には class `ppt-shape-svg` を付け、収集器は中身を拾わない。
 - 1 つの図形は path を複数持つ。path の `fill` が `none` なら塗らない。`darken` `darkenLess` `lighten` `lightenLess` は塗りの上に黒 40% / 黒 20% / 白 40% / 白 20% を重ねる。`stroke="false"` の path は線を引かない。`fill` prop は `fill="none"` でない path すべてに効く（`fill="none"` の path を持つ図形でも、他の path は塗る）。
 - **塗りを全部描いてから線を描く**。定義の path の順に描くと、`chartPlus` など線だけの path が塗りの path より先に定義されている図形で、線が塗りに隠れる。
-- 矢じりは SVG の marker（部品ごとに一意な id。`/print` は全スライドを同時に描く。`line` の SVG と図形の SVG で同じ定義を使う）。**形は値ごと**: `arrow` は開いた V 字（線だけ）、`stealth` は後ろに切り欠きのある塗り、`triangle` は塗った三角、`oval` は円、`diamond` は菱形。未知の値は三角。**大きさは線幅のおよそ 3 倍、下限 6 px**（PowerPoint の既定の大きさ「中」（med）の近似）。
+- 矢じりは SVG の marker（部品ごとに一意な id。`/print` は全スライドを同時に描く。`line` の SVG と図形の SVG で同じ定義を使う）。**形は値ごと**: `arrow` は開いた V 字（線だけ）、`stealth` は後ろに切り欠きのある塗り、`triangle` は塗った三角、`oval` は円、`diamond` は菱形。**未知の値は `arrow`（開いた V 字）**で、書き出しの変換（未知の値を `arrow` にして `W-SHAPE`）と同じ形にする。**大きさは線幅のおよそ 3 倍、下限 6 px**（PowerPoint の既定の大きさ「中」（med）の近似）。
 - 反転は SVG の中で、枠の中心に対して行う。
 - 評価器の近似: 0 割りは 0、`sqrt` の負数は 0 にする。範囲内の `adj` でもそうなる定義がある（`circularArrow` の `adj5 = 0`、`curvedUpArrow`）。PowerPoint がそのとき何を描くかは確かめていない。
 - 定義の誤記 1 件（`pie` の文字の枠。`t` と `r` の名前が入れ替わっていて枠が図形の外に出る）は、生成時に補正してある（`scripts/gen-presets.mjs` の `RECT_FIXES`）。PowerPoint の実際の挙動は確かめていない。
