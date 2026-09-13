@@ -381,10 +381,11 @@ function addShape(
 ): void {
   // prst 名は PptxGenJS の ShapeType を通さずそのまま渡す（'<a:prstGeom prst="' + shape + '">' と書かれる）。
   // ShapeType に無いコネクタ 9 種や、綴りを誤っている foldedCorner もこれで出る
+  const shapeWarn = (message: string) => ctx.report.warnings.push({ code: 'W-SHAPE', elementId: e.id, slide: sc.no, name, message })
   const preset = isPreset(e.shape)
-  if (!preset) ctx.report.warnings.push({ code: 'W-SHAPE', elementId: e.id, slide: sc.no, name, message: `図形 "${e.shape}" は PowerPoint の図形に無いので rect にした` })
+  if (!preset) shapeWarn(`図形 "${e.shape}" は PowerPoint の図形に無いので rect にした${e.adj && Object.keys(e.adj).length ? '（調整値も捨てた）' : ''}`)
   const shapeType = (preset ? e.shape : pptx.ShapeType.rect) as PptxGenJS.SHAPE_NAME
-  const adjust = shapeAdjust(e, preset ? e.shape : 'rect', sc, name, ctx)
+  const adjust = preset ? shapeAdjust(e, box, shapeWarn) : undefined
   if (adjust) (ctx.adjust[pptxNo] ??= {})[name] = adjust
 
   const common: PptxGenJS.ShapeProps = { ...boxProps(box, canvas), objectName: name }
@@ -394,8 +395,9 @@ function addShape(
   else common.line = { color: '000000', width: 0, transparency: 100 }
   if (e.arrow?.head) common.line.beginArrowType = arrow(e.arrow.head)
   if (e.arrow?.tail) common.line.endArrowType = arrow(e.arrow.tail)
-  // 調整値の adj は後処理が avLst を書き直すので、rectRadius の gd は出さない
-  if (e.frame.radius && e.shape === 'roundRect' && adjust?.adj === undefined) common.rectRadius = inch(e.frame.radius, canvas)
+  const unknownArrows = [e.arrow?.head, e.arrow?.tail].filter((v): v is string => !!v && !ARROW_TYPES.includes(v))
+  if (unknownArrows.length) shapeWarn(`矢じり ${unknownArrows.join(', ')} は PowerPoint に無いので arrow にした`)
+  // roundRect の角の半径は rectRadius を使わず、shapeAdjust が adj に換算して後処理が書く
   if (e.rotate) common.rotate = e.rotate
   if (e.flipH) common.flipH = true
   if (e.flipV) common.flipV = true
@@ -413,22 +415,35 @@ function addShape(
   }
 }
 
+/** a:gd の fmla="val N" の N（ST_Coordinate32 の範囲。外は PowerPoint が修復に掛ける） */
+const ADJ_MIN = -2147483648
+const ADJ_MAX = 2147483647
+/** roundRect の定義の `pin 0 adj 50000` */
+const ROUND_RECT_ADJ_MAX = 50000
+
 /**
  * 調整値を定義（prst の avLst）の名前に絞り、整数に丸める。PptxGenJS は avLst を rectRadius と angleRange でしか
  * 書けないので、ここで ctx.adjust に積み、後処理 applyShapeAdjust が <a:avLst> を書き直す。
- * 定義に無い名前と数でない値は捨てて W-SHAPE。残りが無ければ undefined
+ * 定義に無い名前、数でない値、丸めて 32 bit 整数の範囲外の値は捨てて W-SHAPE。残りが無ければ undefined。
+ * 調整値は枠に対する比率なので、スライドからはみ出して枠を縮めた図形では形が Slidev の見た目とずれる（直していない）
  */
-function shapeAdjust(e: ShapeElement, prst: string, sc: SlideCapture, name: string, ctx: PatchContext): Record<string, number> | undefined {
-  if (!e.adj) return undefined
-  const known = new Set(PRESETS[prst].av.map(([n]) => n))
+function shapeAdjust(e: ShapeElement, box: Box, warn: (message: string) => void): Record<string, number> | undefined {
+  const known = new Set(PRESETS[e.shape].av.map(([n]) => n))
   const out: Record<string, number> = {}
   const dropped: string[] = []
-  for (const [k, v] of Object.entries(e.adj)) {
-    if (known.has(k) && Number.isFinite(v)) out[k] = Math.round(v)
+  for (const [k, v] of Object.entries(e.adj ?? {})) {
+    const n = typeof v === 'number' ? Math.round(v) : NaN
+    if (known.has(k) && n >= ADJ_MIN && n <= ADJ_MAX) out[k] = n
     else dropped.push(k)
   }
-  if (dropped.length) {
-    ctx.report.warnings.push({ code: 'W-SHAPE', elementId: e.id, slide: sc.no, name, message: `図形 "${prst}" の調整値 ${dropped.join(', ')} は定義に無いか数でないので捨てた` })
+  if (dropped.length) warn(`図形 "${e.shape}" の調整値 ${dropped.join(', ')} は定義に無いか、数でないか、範囲外なので捨てた`)
+  // roundRect の radius（px）は adj に換算する。PptShape.vue と同じ式（角の半径 = ss × adj / 100000）で、adj.adj があればそちらが勝つ。
+  // PptxGenJS の rectRadius は 0 を捨てて（if (rectRadius)）PowerPoint の既定の角丸になるので使わない。
+  // ss は寄せた後の枠で取る（px の半径を保つ）。範囲は定義の pin に合わせる
+  const radius = e.frame.radius
+  if (e.shape === 'roundRect' && typeof radius === 'number' && Number.isFinite(radius) && out.adj === undefined) {
+    const ss = Math.min(box.w, box.h)
+    if (ss > 0) out.adj = Math.max(0, Math.min(ROUND_RECT_ADJ_MAX, Math.round((radius / ss) * 100000)))
   }
   return Object.keys(out).length ? out : undefined
 }
@@ -446,8 +461,10 @@ function addLine(pptx: PptxGenJS, slide: PptxGenJS.Slide, e: LineElement, name: 
   slide.addShape(pptx.ShapeType.line, { x: emu(x, canvas), y: emu(y, canvas), w: emu(w, canvas), h: emu(h, canvas), line, flipV, objectName: name })
 }
 
+const ARROW_TYPES = ['none', 'arrow', 'diamond', 'oval', 'stealth', 'triangle']
+
 function arrow(v: string): PptxGenJS.ShapeLineProps['endArrowType'] {
-  return (['none', 'arrow', 'diamond', 'oval', 'stealth', 'triangle'].includes(v) ? v : 'arrow') as PptxGenJS.ShapeLineProps['endArrowType']
+  return (ARROW_TYPES.includes(v) ? v : 'arrow') as PptxGenJS.ShapeLineProps['endArrowType']
 }
 
 // ---------------------------------------------------------------- 画像
