@@ -50,12 +50,12 @@ props を「書式の上書き」に絞り、Markdown の中身は slot に任�
 
 | prop | 型 | 既定 | 意味 |
 |---|---|---|---|
-| `type` | `string`（PowerPoint の図形の名前。187 種） | `'rect'` | ECMA-376 の `prst` 名をそのまま使う（`rect` `roundRect` `ellipse` `rightArrow` `wedgeRectCallout` `flowChartDecision` `bentConnector3` など。一覧は `src/shapes/presets.ts` のキーと、全種を並べたデッキ `tests/fixtures/deck/shapes.md`）。`line` だけは対角線（下の描画）。未知の名前は `console.warn` を出して `rect` で描き、書き出しでも `rect` にして `W-SHAPE` |
+| `type` | `string`（PowerPoint の図形の名前。187 種） | `'rect'` | ECMA-376 の `prst` 名をそのまま使う（`rect` `roundRect` `ellipse` `rightArrow` `wedgeRectCallout` `flowChartDecision` `bentConnector3` など。一覧は `src/shapes/presets.ts` のキーと、全種を並べたデッキ `tests/fixtures/deck/shapes.md`）。`line` だけは対角線（下の描画）。未知の名前は `console.warn`（名前ごとに 1 回）を出して `rect` で描き、書き出しでも `rect` にして `W-SHAPE` |
 | `adj` | `Record<string, number>` | なし | 調整値。キーは定義の `avLst` の名前（`adj` `adj1` …）、値は ECMA の単位（例 `50000`。大半は 100000 分率、角度は 60000 分の 1 度。何に対する比かは図形ごとに定義の数式が決める）。指定しないキーは定義の既定 |
 | `flipH` `flipV` | `boolean` | `false` | 左右・上下反転。図形は反転し、文字は左右反転しない。`flipV` のとき文字は 180 度回る（PowerPoint と同じ） |
 | `fill` | `string \| 'none'` | `'#ffffff'` | 塗り。`'none'` で塗りなし |
-| `line` | `string \| 'none' \| { color, width, dash, head, tail }` | `'#000000'`（1 px） | 線。`'none'` で線なし。`head` `tail` は `'none' \| 'arrow' \| 'triangle' \| 'oval' \| 'diamond'`。**`line` 以外の図形でも効き**、開いた path（`Z` で閉じない輪郭。コネクタ・円弧・かっこなど）の始点（`head`）と終点（`tail`）に付く |
-| `radius` | `number`（px） | 8 | `roundRect` の角丸。定義の式（角の半径 = 短辺 × `adj` / 100000）で `adj.adj` に換算する。`adj.adj` を書けばそちらが勝つ |
+| `line` | `string \| 'none' \| { color, width, dash, head, tail }` | `'#000000'`（1 px） | 線。`'none'` で線なし。`head` `tail` は `'none' \| 'arrow' \| 'stealth' \| 'triangle' \| 'oval' \| 'diamond'`。**`line` 以外の図形でも効き**、開いた path（`Z` で閉じない輪郭。コネクタ・円弧・かっこなど）の始点（`head`）と終点（`tail`）に付く |
+| `radius` | `number`（px） | 8 | `roundRect` の角丸。定義の式（角の半径 = 短辺 × `adj` / 100000）で `adj.adj` に換算する。`adj.adj` は、有限で、丸めて 32 bit 整数に収まるときだけ `radius` に勝つ（書き出しの変換と同じ判定。native-export.md §4.3） |
 | `rotate` | `number`（度） | 0 | 回転 |
 | `padding` | `number \| [t, r, b, l]`（px） | `[0, 8, 0, 8]` | 図形の中の文字の内側余白。CSS の padding と PPTX の inset（`frame.inset`）の両方に使う |
 | `align` `valign` | `PptText` と同じ | `'center'` / `'middle'` | 図形の中の文字。既定は `PptText`（左・上）と違い PowerPoint の図形と同じ中央 |
@@ -72,24 +72,25 @@ props を「書式の上書き」に絞り、Markdown の中身は slot に任�
 - SVG の viewBox は枠の実寸 px で、引き伸ばさない（形が縦横比で変わるため）。大きさは `w` `h` があればそれ、無い辺は ResizeObserver で測る。SVG には class `ppt-shape-svg` を付け、収集器は中身を拾わない。
 - 1 つの図形は path を複数持つ。path の `fill` が `none` なら塗らない。`darken` `darkenLess` `lighten` `lightenLess` は塗りの上に黒 40% / 黒 20% / 白 40% / 白 20% を重ねる。`stroke="false"` の path は線を引かない。`fill` prop は `fill="none"` でない path すべてに効く（`fill="none"` の path を持つ図形でも、他の path は塗る）。
 - **塗りを全部描いてから線を描く**。定義の path の順に描くと、`chartPlus` など線だけの path が塗りの path より先に定義されている図形で、線が塗りに隠れる。
-- 矢じりは SVG の marker（部品ごとに一意な id。`/print` は全スライドを同時に描く）。**形は値ごと**: `oval` は円、`diamond` は菱形、それ以外（`arrow` `triangle` と未知の値）は塗った三角。大きさは線の幅に比例する。
+- 矢じりは SVG の marker（部品ごとに一意な id。`/print` は全スライドを同時に描く。`line` の SVG と図形の SVG で同じ定義を使う）。**形は値ごと**: `arrow` は開いた V 字（線だけ）、`stealth` は後ろに切り欠きのある塗り、`triangle` は塗った三角、`oval` は円、`diamond` は菱形。未知の値は三角。**大きさは線幅のおよそ 3 倍、下限 6 px**（PowerPoint の既定の大きさ「中」（med）の近似）。
 - 反転は SVG の中で、枠の中心に対して行う。
 - 評価器の近似: 0 割りは 0、`sqrt` の負数は 0 にする。範囲内の `adj` でもそうなる定義がある（`circularArrow` の `adj5 = 0`、`curvedUpArrow`）。PowerPoint がそのとき何を描くかは確かめていない。
 - 定義の誤記 1 件（`pie` の文字の枠。`t` と `r` の名前が入れ替わっていて枠が図形の外に出る）は、生成時に補正してある（`scripts/gen-presets.mjs` の `RECT_FIXES`）。PowerPoint の実際の挙動は確かめていない。
 
 **文字の枠**。
-- **`h` を props で決めたときだけ**、定義の文字の枠（`rect` の l t r b。楕円なら内接する矩形、三角なら下半分）に文字を置き、その内側に `padding` を空ける。反転したときは、反転した形の上での位置に置く。
-- `h` が内容で決まるときは枠全体に置く（今までと同じ）。文字の枠は高さに依存し、高さは文字の量に依存するので循環するため。
+- **`w` と `h` がどちらも props にあるときだけ**、定義の文字の枠（`rect` の l t r b。楕円なら内接する矩形、三角なら下半分）に文字を置き、その内側に `padding` を空ける。反転したときは、反転した形の上での位置に置く。
+- どちらかが無ければ（幅か高さが内容で決まるときは）枠全体に置き、`padding` だけを空ける。文字の枠の余白は枠の大きさに比例し、枠の大きさは文字の量で決まるので循環するため。幅が内容で決まる図形で文字の枠を使うと、余白が幅に比例して増えて測り直しが止まらず、書き出しが壊れた（レビューで実測。幅が 3300 万 px に達した）。
 - `flipV` のとき文字は 180 度回る。`valign` の上下も入れ替わって見える（PowerPoint と同じ）。
 
-Capture: `kind: 'shape'`（`line` は `kind: 'line'`）。`shape` は `type` の名前のまま。`adj` は有限の数値のキーだけ、`flipH` `flipV` は `true` のときだけ、`line.head` `line.tail` は `'none'` を除いて `arrow` に入れる（native-export.md §2）。`rotate` があるとき `box` は回転前の枠（`data-ppt-box` と `data-ppt-opts.rotate` から復元。回転後の外接矩形は使わない）。
+Capture: `kind: 'shape'`（`line` は `kind: 'line'`）。`shape` は `type` の名前のまま。`adj` は有限の数値のキーだけ、`flipH` `flipV` は `true` のときだけ、`line.head` `line.tail` は `'none'` を除いて `arrow` に入れる（native-export.md §2）。`rotate` があるとき `box` は回転前の枠（`data-ppt-box` と `data-ppt-opts.rotate` から復元。回転後の外接矩形は使わない）。`rotate` と実測の大きさを併用するときは、大きさが変わるたびに回転前の枠を測り直す（大きさの変わらない位置だけの移動は追わない）。
 PPTX: 名前をそのまま `<a:prstGeom prst>` に出し、調整値は後処理で `<a:avLst>` に書く（native-export.md §3.2、§4.3）。PowerPoint は同じ定義で描くので、形が一致し、開いた後に調整ハンドルでも直せる。
 
 `type` を PowerPoint の図形の名前にし、形を定義の数式から描く（docs/adr/0002）。
 - 得るもの: PowerPoint の図形 187 種（吹き出し・フローチャート記号・コネクタ・星・アクションボタンなど）が 1 つの部品で使え、Slidev の画面と PowerPoint で形が一致する。調整値と反転も PowerPoint の図形と 1:1。
 - 失うもの: `type` は `string` なので、綴り違いは型では止まらない。画面の `console.warn`（と `rect` の見た目）と、書き出しの `W-SHAPE` で気付く。`adj` のキーと単位は図形ごとの定義を読まないと分からない。
-- 失うもの: `h` を指定しない図形は、Slidev では文字が枠全体に置かれ、PowerPoint では定義の文字の枠に置かれるので、楕円や三角で文字の位置が食い違う。
-- 失うもの: 矢じりの大きさと形は近似。PowerPoint の `arrow` は開いた（塗らない）矢じりで、大きさも既定の「中」と一致しない。
+- 失うもの: `w` と `h` の両方を指定しない図形（`h` だけ書いた図形を含む）は、Slidev では文字が枠全体に置かれ、PowerPoint では定義の文字の枠に置かれるので、PowerPoint で開くと文字の位置が少しずれる（楕円や三角で目立つ）。
+- 失うもの: 矢じりの大きさは PowerPoint の「中」の近似（線幅のおよそ 3 倍）で、細い線では下限 6 px のぶん PowerPoint より大きく見える。
+- 失うもの: 形は定義どおりに描くだけで、見た目の補正はしない。`cloudCallout` は調整値で泡（吹き出しの先）を雲の近くに置くと、泡が雲に重なり、PowerPoint と描き分けが変わる（既知の差。`PptShape.vue` のコメント）。
 - 失うもの: スライドからはみ出して枠を縮めた図形は、PowerPoint では縮めた枠に調整値が効くので、形が Slidev とずれる（native-export.md §4.3）。
 
 ### 1.4 `PptImage`

@@ -360,7 +360,7 @@ inch(px) = px * SLIDE_W_IN / canvas.width                              // rectRa
 **図形の名前と調整値**（`convert.ts` の `addShape`）:
 - `shape` が PowerPoint の図形の定義（`src/shapes/presets.ts` の 187 種。`isPreset`）にあれば、名前を PptxGenJS の `ShapeType` を通さずそのまま渡す（PptxGenJS は `'<a:prstGeom prst="' + shape + '">'` と書く）。`ShapeType` に無いコネクタ 9 種と、`ShapeType` で綴りを誤っている `foldedCorner` もこれで出る。定義に無ければ `rect` にし、調整値も捨てて `W-SHAPE`。
 - 調整値: `adj` を定義の avLst の名前に絞り、整数に丸めて `ctx.adjust[PPTX の番号][図形名]` に積む。後処理 4a が `<a:avLst>` に書く。定義に無い名前・数でない値・丸めて 32 bit 整数（`ST_Coordinate32`）の範囲外の値は捨てて `W-SHAPE`（範囲外は PowerPoint が「修復」に掛ける）。
-- `roundRect` の角丸: `frame.radius`（px）を `rectRadius` に渡さず、`adj.adj` に換算する（角の半径 = 短辺 × `adj` / 100000。`PptShape.vue` と同じ式）。`adj.adj` があればそちらが勝つ。PptxGenJS は `rectRadius` が 0 だと捨てて（`if (rectRadius)`）PowerPoint の既定の角丸になるので、0 を保つためにこちらにした。短辺は**寄せた後の枠**（§4.1）で取り、px の半径を保つ。値は定義の `pin 0 adj 50000` に合わせて 0〜50000 に収める。テキスト枠（`PptText` などの `frame.radius`）は今までどおり `rectRadius`（§4.2）。
+- `roundRect` の角丸: `frame.radius`（px）を `rectRadius` に渡さず、`adj.adj` に換算する（角の半径 = 短辺 × `adj` / 100000。`PptShape.vue` と同じ式）。上の絞り込みで捨てられなかった `adj.adj`（有限で、丸めて 32 bit 整数に収まる）があればそちらが勝つ（`PptShape.vue` も同じ判定）。PptxGenJS は `rectRadius` が 0 だと捨てて（`if (rectRadius)`）PowerPoint の既定の角丸になるので、0 を保つためにこちらにした。短辺は**寄せた後の枠**（§4.1）で取り、px の半径を保つ。値は定義の `pin 0 adj 50000` に合わせて 0〜50000 に収める。テキスト枠（`PptText` などの `frame.radius`）は今までどおり `rectRadius`（§4.2）。
 - 反転: `flipH` `flipV` は `true` のときだけオプションに渡す（`<a:xfrm flipH flipV>`）。
 - 矢じり: `arrow.head` → `line.beginArrowType`、`arrow.tail` → `line.endArrowType`。値は `none` `arrow` `diamond` `oval` `stealth` `triangle` のどれかで、それ以外は `arrow` にして `W-SHAPE`。
 - 文字の枠は PPTX に書かない。PowerPoint は定義の文字の枠を自分で使う（Slidev 側の扱いは ppt-components.md §1.3）。
