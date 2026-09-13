@@ -1,0 +1,203 @@
+{
+  "canvas": { "width": 980, "height": 552 },
+  "slides": [
+    {
+      "no": 1,
+      "lang": "ja",
+      "zoom": 1,
+      "backgroundColor": "#ffffff",
+      "elements": [
+        {
+          "id": "s1-e1", "name": "", "source": "markdown", "kind": "text", "roleHint": "title",
+          "box": { "x": 56, "y": 220, "w": 868, "h": 80 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 80, "boxHeight": 80 }, "frame": { "inset": [0, 0, 0, 0] },
+          "paragraphs": [
+            { "kind": "heading", "level": 1, "align": "left", "lineHeight": 80, "spaceBefore": 0, "spaceAfter": 16,
+              "runs": [ { "text": "Slidev 入門", "size": 60, "color": "#ffffff", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] }
+          ]
+        },
+        {
+          "id": "s1-e2", "name": "", "source": "markdown", "kind": "text", "roleHint": "body",
+          "box": { "x": 56, "y": 308, "w": 868, "h": 24 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 24, "boxHeight": 24 }, "frame": { "inset": [0, 0, 0, 0] },
+          "paragraphs": [
+            { "kind": "plain", "level": 0, "align": "left", "lineHeight": 24, "spaceBefore": 0, "spaceAfter": 16,
+              "runs": [ { "text": "Markdown で書くスライド", "size": 17.6, "color": "#ffffff", "transparency": 50, "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] }
+          ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "no": 2,
+      "lang": "",
+      "zoom": 1,
+      "backgroundColor": "#ffffff",
+      "elements": [
+        {
+          "id": "s2-e1", "name": "", "source": "markdown", "kind": "text", "roleHint": "title",
+          "box": { "x": 56, "y": 40, "w": 868, "h": 36 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 36, "boxHeight": 36 }, "frame": { "inset": [0, 0, 0, 0] },
+          "paragraphs": [
+            { "kind": "heading", "level": 2, "align": "left", "lineHeight": 36, "spaceBefore": 0, "spaceAfter": 0,
+              "runs": [ { "text": "Slidev とは", "size": 30, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] }
+          ]
+        },
+        {
+          "id": "s2-e2", "name": "", "source": "markdown", "kind": "text", "roleHint": "body",
+          "box": { "x": 56, "y": 92, "w": 868, "h": 120 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 120, "boxHeight": 120 }, "frame": { "inset": [0, 0, 0, 0] },
+          "paragraphs": [
+            { "kind": "bullet", "level": 0, "align": "left", "lineHeight": 31.68, "spaceBefore": 0, "spaceAfter": 0,
+              "runs": [
+                { "text": "Markdown", "size": 17.6, "color": "#333333", "bold": true, "italic": false, "underline": false, "strike": false, "code": false },
+                { "text": " でスライドを書く", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false }
+              ] },
+            { "kind": "bullet", "level": 1, "align": "left", "lineHeight": 31.68, "spaceBefore": 0, "spaceAfter": 0,
+              "runs": [
+                { "text": "中身は ", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false },
+                { "text": "Vite", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": true, "highlight": "#f5f5f5" },
+                { "text": " で動く", "size": 17.6, "color": "#333333", "bold": false, "italic": true, "underline": false, "strike": false, "code": false }
+              ] },
+            { "kind": "number", "level": 0, "numberStart": 3, "align": "left", "lineHeight": 31.68, "spaceBefore": 0, "spaceAfter": 0,
+              "runs": [
+                { "text": "公式サイト", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false, "link": { "url": "https://sli.dev" } },
+                { "text": " と ", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false },
+                { "text": "3 枚目", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false, "link": { "slide": 3 } }
+              ] }
+          ]
+        },
+        {
+          "id": "s2-e3", "name": "", "source": "markdown", "kind": "text",
+          "box": { "x": 56, "y": 230, "w": 868, "h": 60 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 60, "boxHeight": 60 },
+          "frame": { "fill": { "color": "#f8f8f8" }, "radius": 6, "inset": [12, 16, 12, 16] },
+          "paragraphs": [
+            { "kind": "code", "level": 0, "align": "left", "lineHeight": 20, "spaceBefore": 0, "spaceAfter": 0,
+              "runs": [ { "text": "const a = 1", "size": 14, "color": "#393a34", "bold": false, "italic": false, "underline": false, "strike": false, "code": true } ] },
+            { "kind": "code", "level": 0, "align": "left", "lineHeight": 20, "spaceBefore": 0, "spaceAfter": 0,
+              "runs": [ { "text": "  return a", "size": 14, "color": "#393a34", "bold": false, "italic": false, "underline": false, "strike": false, "code": true } ] }
+          ]
+        },
+        {
+          "id": "s2-e4", "name": "", "source": "markdown", "kind": "table",
+          "box": { "x": 56, "y": 300, "w": 868, "h": 90 }, "boxSource": "measured",
+          "colW": [434, 434], "rowH": [45, 45], "headerRows": 1,
+          "rows": [
+            [
+              { "paragraphs": [ { "kind": "plain", "level": 0, "align": "left", "lineHeight": 24, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "名前", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ],
+                "border": [ { "width": 0, "color": "" }, { "width": 0, "color": "" }, { "width": 1, "color": "#e5e5e5" }, { "width": 0, "color": "" } ],
+                "inset": [12, 8, 12, 8], "align": "left", "valign": "middle" },
+              { "paragraphs": [ { "kind": "plain", "level": 0, "align": "left", "lineHeight": 24, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "用途", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ],
+                "border": [ { "width": 0, "color": "" }, { "width": 0, "color": "" }, { "width": 1, "color": "#e5e5e5" }, { "width": 0, "color": "" } ],
+                "inset": [12, 8, 12, 8], "align": "left", "valign": "middle" }
+            ],
+            [
+              { "paragraphs": [ { "kind": "plain", "level": 0, "align": "left", "lineHeight": 24, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "default", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": true, "highlight": "#f5f5f5" } ] } ],
+                "border": [ { "width": 0, "color": "" }, { "width": 0, "color": "" }, { "width": 1, "color": "#e5e5e5" }, { "width": 0, "color": "" } ],
+                "inset": [0, 8, 12, 8], "align": "left", "valign": "middle" },
+              { "paragraphs": [ { "kind": "plain", "level": 0, "align": "center", "lineHeight": 24, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "通常", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ],
+                "border": [ { "width": 0, "color": "" }, { "width": 0, "color": "" }, { "width": 1, "color": "#e5e5e5" }, { "width": 0, "color": "" } ],
+                "inset": [12, 8, 12, 8], "align": "center", "valign": "middle" }
+            ]
+          ]
+        },
+        {
+          "id": "s2-e5", "name": "photo", "source": "ppt", "kind": "image",
+          "box": { "x": 640, "y": 400, "w": 280, "h": 120 }, "boxSource": "prop",
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+          "fit": "cover", "alt": "写真", "link": { "url": "https://example.com/photo" }
+        },
+        {
+          "id": "s2-e6", "name": "arrow", "source": "ppt", "kind": "shape", "shape": "rightArrow",
+          "box": { "x": 60, "y": 420, "w": 120, "h": 40 }, "boxSource": "prop",
+          "frame": { "fill": { "color": "#3b82f6" }, "line": { "color": "#1d4ed8", "width": 2, "dash": "dot" }, "inset": [0, 0, 0, 0] },
+          "link": { "url": "https://example.com/arrow" },
+          "paragraphs": [ { "kind": "plain", "level": 0, "align": "center", "lineHeight": 20, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "次へ", "size": 14, "color": "#ffffff", "bold": true, "italic": false, "underline": false, "strike": false, "code": false } ] } ],
+          "valign": "middle"
+        },
+        {
+          "id": "s2-e7", "name": "", "source": "ppt", "kind": "shape", "shape": "roundRect",
+          "box": { "x": 200, "y": 420, "w": 100, "h": 40 }, "boxSource": "prop",
+          "frame": { "fill": { "color": "#eeeeff", "transparency": 20 }, "radius": 8, "inset": [0, 0, 0, 0] },
+          "link": { "slide": 1 }
+        },
+        {
+          "id": "s2-e8", "name": "", "source": "markdown", "kind": "line",
+          "box": { "x": 56, "y": 500, "w": 868, "h": 0 }, "boxSource": "measured",
+          "line": { "color": "#cccccc", "width": 1, "dash": "solid" },
+          "from": { "x": 56, "y": 500 }, "to": { "x": 924, "y": 500 }
+        },
+        {
+          "id": "s2-e9", "name": "", "source": "replaced", "kind": "image",
+          "box": { "x": 400, "y": 420, "w": 200, "h": 60 }, "boxSource": "measured",
+          "captureId": "s2-e9", "reason": "math"
+        },
+        {
+          "id": "s2-e10", "name": "", "source": "markdown", "kind": "image",
+          "box": { "x": 700, "y": 40, "w": 200, "h": 40 }, "boxSource": "measured",
+          "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+          "fit": "fill", "alt": "引き伸ばし"
+        }
+      ],
+      "warnings": [ { "code": "W-MATH-INLINE", "elementId": "s2-e2", "message": "inline math flattened" } ]
+    },
+    {
+      "no": 3,
+      "lang": "",
+      "zoom": 1,
+      "backgroundColor": "#ffffff",
+      "elements": [
+        {
+          "id": "s3-e1", "name": "", "source": "markdown", "kind": "text", "roleHint": "title",
+          "box": { "x": 56, "y": 40, "w": 434, "h": 36 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 36, "boxHeight": 36 }, "frame": { "inset": [0, 0, 0, 0] },
+          "paragraphs": [ { "kind": "heading", "level": 2, "align": "left", "lineHeight": 36, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "始め方", "size": 30, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ]
+        },
+        {
+          "id": "s3-e2", "name": "", "source": "markdown", "kind": "text", "roleHint": "body2",
+          "box": { "x": 490, "y": 40, "w": 434, "h": 600 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 900, "boxHeight": 472 }, "frame": { "inset": [0, 0, 0, 0] },
+          "paragraphs": [ { "kind": "plain", "level": 0, "align": "left", "lineHeight": 24, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "長い本文", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ]
+        },
+        {
+          "id": "s3-e3", "name": "", "source": "markdown", "kind": "text",
+          "box": { "x": -30, "y": 300, "w": 200, "h": 40 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 40, "boxHeight": 40 }, "frame": { "inset": [0, 0, 0, 0] },
+          "paragraphs": [ { "kind": "plain", "level": 0, "align": "left", "lineHeight": 24, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "はみ出し", "size": 17.6, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "no": 4,
+      "lang": "",
+      "zoom": 1,
+      "backgroundColor": "#1e293b",
+      "elements": [
+        {
+          "id": "s4-e1", "name": "", "source": "markdown", "kind": "text", "roleHint": "title",
+          "box": { "x": 56, "y": 236, "w": 868, "h": 80 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 80, "boxHeight": 80 }, "frame": { "inset": [0, 0, 0, 0] },
+          "paragraphs": [ { "kind": "heading", "level": 1, "align": "center", "lineHeight": 80, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "章", "size": 60, "color": "#ffffff", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ]
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "no": 5,
+      "lang": "",
+      "zoom": 1,
+      "backgroundColor": "#ffffff",
+      "elements": [
+        {
+          "id": "s5-e1", "name": "", "source": "markdown", "kind": "text", "roleHint": "title",
+          "box": { "x": 56, "y": 40, "w": 868, "h": 36 }, "boxSource": "measured",
+          "valign": "top", "fit": { "contentHeight": 36, "boxHeight": 36 }, "frame": { "inset": [0, 0, 0, 0] },
+          "paragraphs": [ { "kind": "heading", "level": 2, "align": "left", "lineHeight": 36, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "綴り違い", "size": 30, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ]
+        }
+      ],
+      "warnings": []
+    }
+  ]
+}

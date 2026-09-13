@@ -7,6 +7,18 @@ transition: slide-left
 mdc: true
 highlighter: shiki
 lineNumbers: false
+addons:
+  - slidev-addon-pptx
+fonts:
+  # Windows は 游ゴシック / Consolas、Mac は OS 同梱の 游ゴシック体 と Menlo で代用する（計測の行数を PowerPoint に近づける）
+  sans: 游ゴシック, 游ゴシック体, YuGothic
+  mono: Consolas, Menlo
+  local:
+    - 游ゴシック
+    - 游ゴシック体
+    - YuGothic
+    - Consolas
+    - Menlo
 ---
 
 # Slidev 入門
@@ -231,6 +243,26 @@ pnpm slidev build
 > PPTX は各スライドを画像として貼るため、PowerPoint 上で文字の編集はできません。
 
 </v-click>
+
+---
+
+## PPT 部品
+
+Markdown の見出し・段落・箇条書き・表はそのままネイティブ書き出しされます。図形や座標指定が要るところだけ PPT 部品を使います。
+
+<PptShape type="rightArrow" :x="60" :y="330" :w="140" :h="44" fill="#3b82f6" line="none" color="#ffffff">次へ</PptShape>
+
+<PptText :x="230" :y="320" :w="300" fill="#eef2ff" :radius="8" :padding="12" name="lead">
+
+**座標指定**のテキスト枠。`x` `y` を書かなければ実測配置になります。
+
+</PptText>
+
+<PptShape type="ellipse" :x="560" :y="320" :w="120" :h="64" fill="#fde68a" line="#b45309">楕円</PptShape>
+
+<PptShape type="line" :x="60" :y="430" :w="620" :h="0" :line="{ color: '#94a3b8', width: 2, tail: 'arrow' }" />
+
+<PptTable :x="720" :y="300" :rows="[['部品', '出るもの'], ['PptText', 'テキスト枠'], ['PptShape', '図形']]" />
 
 ---
 layout: center

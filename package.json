@@ -6,11 +6,21 @@
     "dev": "slidev --open",
     "build": "slidev build",
     "export": "slidev export",
-    "export:pptx": "slidev export --format pptx"
+    "export:pptx": "slidev-pptx export slides.md",
+    "export:pptx-image": "slidev export --format pptx",
+    "test": "vitest run -c tests/vitest.config.ts",
+    "test:e2e": "vitest run -c tests/vitest.e2e.config.ts"
   },
   "devDependencies": {
     "@slidev/cli": "^52.19.1",
     "@slidev/theme-default": "^0.25.0",
-    "playwright-chromium": "^1.63.0"
+    "@types/node": "^22.20.2",
+    "@xmldom/xmldom": "^0.8.10",
+    "jszip": "^3.10.1",
+    "playwright-chromium": "^1.63.0",
+    "pptxgenjs": "^4.0.1",
+    "slidev-addon-pptx": "workspace:*",
+    "typescript": "^6.0.3",
+    "vitest": "^4"
   }
 }
