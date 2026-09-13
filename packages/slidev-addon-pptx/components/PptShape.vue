@@ -18,6 +18,7 @@ function warnOnce(key: string, ...args: unknown[]): void {
 // 泡が雲に重なる（adj1: -30000 と太い線で目立つ）。直していない
 import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 import { evalPreset, isPreset } from '../src/shapes/geometry.ts'
+import { normalizeAdjust, radiusToAdj } from '../src/shapes/adjust.ts'
 import type { PresetFill, PresetGeometry } from '../src/shapes/geometry.ts'
 
 type Dash = 'solid' | 'dash' | 'dot'
@@ -121,21 +122,16 @@ const isLine = computed(() => props.type === 'line')
 const W = computed(() => props.w ?? size.value.w)
 const H = computed(() => props.h ?? size.value.h)
 
-/** a:gd の fmla="val N" に書ける範囲（変換の shapeAdjust と同じ。外の値は変換が捨てて radius を使う） */
-const ADJ_MIN = -2147483648
-const ADJ_MAX = 2147483647
-
 const geometry = computed((): PresetGeometry => {
   const w = Number.isFinite(W.value) ? W.value : 0
   const h = Number.isFinite(H.value) ? H.value : 0
-  let adj = props.adj
-  // roundRect の radius（px）は adj に換算する（定義: 角の半径 = ss × adj / 100000）。
-  // adj.adj が変換で使える数（有限で、丸めて 32 bit 整数の範囲）のときだけそちらが勝つ。変換（shapeAdjust）と同じ判定にして半径を揃える
-  const own = adj?.adj
-  const usable = typeof own === 'number' && Number.isFinite(own) && Math.round(own) >= ADJ_MIN && Math.round(own) <= ADJ_MAX
-  if (props.type === 'roundRect' && !usable) {
-    const ss = Math.min(w, h)
-    if (ss > 0) adj = { ...adj, adj: (props.radius / ss) * 100000 }
+  // 調整値は変換（convert.ts の shapeAdjust）と同じ normalizeAdjust を通す（定義に無い名前・数でない値・範囲外を捨て、整数に丸める）。
+  // PPTX に書かれる値で形を作り、Slidev と PowerPoint の形を揃えるため
+  const { adj } = normalizeAdjust(props.type, props.adj)
+  // roundRect の radius（px）は adj に換算する。adj.adj が残ったときはそちらが勝つ（変換と同じ）
+  if (props.type === 'roundRect' && adj.adj === undefined) {
+    const r = radiusToAdj(props.radius, w, h)
+    if (r !== undefined) adj.adj = r
   }
   // 未知の名前や評価の失敗で部品ごと落とさず、rect で描く
   try {
@@ -155,7 +151,8 @@ const SHADE: Partial<Record<PresetFill, { color: string; opacity: number }>> = {
 }
 
 // ---------------------------------------------------------------- 矢じり
-// 形: arrow は開いた V 字（線だけ）、stealth は後ろが切り欠きの塗り、triangle は塗った三角、oval は円、diamond は菱形。未知の値は三角。
+// 形: arrow は開いた V 字（線だけ）、stealth は後ろが切り欠きの塗り、triangle は塗った三角、oval は円、diamond は菱形。
+// 未知の値は arrow（変換が PowerPoint に arrow として書くのと揃える）。
 // 大きさは PowerPoint の既定（med: 幅・長さとも線幅のおよそ 3 倍）の近似。細い線でも見えるよう下限を設ける
 const MARKER_KINDS = ['arrow', 'stealth', 'triangle', 'oval', 'diamond'] as const
 type MarkerKind = (typeof MARKER_KINDS)[number]
@@ -163,7 +160,7 @@ const ARROW_SCALE = 3
 const ARROW_MIN_PX = 6
 const markerKind = (v: string | undefined): MarkerKind | undefined => {
   if (!v || v === 'none') return undefined
-  return (MARKER_KINDS as readonly string[]).includes(v) ? (v as MarkerKind) : 'triangle'
+  return (MARKER_KINDS as readonly string[]).includes(v) ? (v as MarkerKind) : 'arrow'
 }
 const markerId = (k: MarkerKind) => `ppt-arrow-${uid}-${k}`
 const headKind = computed(() => markerKind(lineProps.value?.head))
