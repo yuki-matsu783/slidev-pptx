@@ -1,0 +1,5 @@
+shamefullyHoist: true
+
+onlyBuiltDependencies:
+  - esbuild
+  - playwright-chromium
