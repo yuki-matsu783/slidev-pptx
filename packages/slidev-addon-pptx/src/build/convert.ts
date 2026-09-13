@@ -70,6 +70,15 @@ export async function build(capture: Capture, data: DeckData, opts: BuildOptions
 
   const slides = [...capture.slides].sort((a, b) => a.no - b.no)
   report.slides = slides.length
+  // PptxGenJS の hyperlink.slide は PPTX の中での順番（slideN.xml）。range で絞ると元の番号とずれるので写像する
+  const slideIndexByNo = new Map(slides.map((s, i) => [s.no, i + 1]))
+  const mapLink = (link: Run['link'] | undefined, no: number, id: string): Run['link'] | undefined => {
+    if (!link || !('slide' in link)) return link
+    const target = slideIndexByNo.get(link.slide)
+    if (target) return { slide: target }
+    warn(no, { code: 'W-LINK', elementId: id, message: `スライド ${link.slide} へのリンクは書き出しの範囲外なので外した` })
+    return undefined
+  }
 
   for (const sc of slides) {
     const index = sc.no - 1
@@ -151,6 +160,13 @@ export async function build(capture: Capture, data: DeckData, opts: BuildOptions
 
     const nameOf = new Map<string, string>()
     for (const e of kept) nameOf.set(e.id, names[ni++])
+
+    // スライドへのリンクを PPTX の順番に写す（範囲外は外す）
+    for (const e of kept) {
+      e.link = mapLink(e.link, sc.no, e.id)
+      const paragraphs = e.kind === 'text' || e.kind === 'shape' ? e.paragraphs : e.kind === 'table' ? e.rows.flat().flatMap((c) => c.paragraphs) : undefined
+      for (const p of paragraphs ?? []) for (const r of p.runs) r.link = mapLink(r.link, sc.no, e.id)
+    }
 
     for (const e of kept) {
       const name = nameOf.get(e.id)!
