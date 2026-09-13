@@ -1,7 +1,7 @@
 // PowerPoint の図形の定義（presetShapeDefinitions.xml を scripts/gen-presets.mjs で写したもの）の型。
 // 値は XML の文字列のまま。数値の定数も、ガイドの名前も、評価器（geometry.ts）が解く。
 
-/** ガイド 1 つ: [名前, 数式]。数式は空白 1 つ区切り（`*/ w adj 100000`） */
+// ガイド 1 つ: [名前, 数式]。数式は空白 1 つ区切り（`*/ w adj 100000`）
 export type Guide = [name: string, fmla: string]
 
 /** path の命令。座標・半径・角度は数値の文字列か、ガイド・組み込みの名前 */
