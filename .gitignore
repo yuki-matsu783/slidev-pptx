@@ -144,3 +144,7 @@ vite.config.ts.timestamp-*
 
 # Claude Code の個人用の設定
 /.claude/settings.local.json
+
+# ccnavi が hook のたびに書く判定の記録とセッションの控え
+/.ccnavi/log.jsonl
+/.claude/ccnavi/state/
