@@ -3,6 +3,8 @@
 // rect / roundRect は div の CSS で、それ以外は inline SVG で描く（形は PowerPoint の preset の近似）。文字は上に重ねる。
 // type="line" は対角線。矢じりの marker は部品ごとに一意な id を持つ（/print は全スライドを同時に描く）。
 import { computed, onMounted, ref, useId } from 'vue'
+import { usePptDrag } from '../composables/usePptDrag'
+import PptEditUi from '../internals/PptEditUi.vue'
 
 type Dash = 'solid' | 'dash' | 'dot'
 type Arrow = 'none' | 'arrow' | 'triangle' | 'oval' | 'diamond'
@@ -21,6 +23,8 @@ const props = withDefaults(
     y?: number
     w?: number
     h?: number
+    /** 試作: ドラッグで動かすときの id。位置と回転はスライドの frontmatter の dragPos[drag] に保存され、x y w h rotate より優先する */
+    drag?: string
     export?: 'native' | 'image'
     name?: string
     type?: ShapeType
@@ -40,6 +44,10 @@ const props = withDefaults(
 
 const uid = useId()
 const root = ref<HTMLElement | null>(null)
+// 線は端点しか PPTX に渡らないので、回転の操作は受け付けない
+const dragged = usePptDrag(props, root, { rotatable: props.type !== 'line' })
+const rot = computed(() => dragged.rotate.value ?? props.rotate)
+
 // rotate のときは回転前の枠（offset*）を測って data-ppt-box に載せる（回転後の外接矩形を使わない）
 const measured = ref<Record<string, number>>({})
 onMounted(() => {
@@ -49,7 +57,10 @@ onMounted(() => {
   }
 })
 
+/** 位置として指定されたもの（ドラッグの枠か props）。実測は含めない */
+const placed = computed<{ x?: number; y?: number; w?: number; h?: number }>(() => dragged.box.value ?? { x: props.x, y: props.y, w: props.w, h: props.h })
 const box = computed(() => {
+  if (dragged.box.value) return { ...dragged.box.value }
   const b: Record<string, number> = { ...measured.value }
   if (props.x !== undefined) b.x = props.x
   if (props.y !== undefined) b.y = props.y
@@ -57,7 +68,7 @@ const box = computed(() => {
   if (props.h !== undefined) b.h = props.h
   return b
 })
-const positioned = computed(() => props.x !== undefined || props.y !== undefined || props.w !== undefined || props.h !== undefined)
+const positioned = computed(() => Object.values(placed.value).some((v) => v !== undefined))
 const lineProps = computed<LineProps | undefined>(() => {
   if (!props.line || props.line === 'none') return undefined
   return typeof props.line === 'string' ? { color: props.line, width: 1 } : { width: 1, ...props.line }
@@ -72,14 +83,15 @@ const dashArray = computed(() => {
 const paddingCss = computed(() => (Array.isArray(props.padding) ? props.padding.map((v) => `${v}px`).join(' ') : `${props.padding}px`))
 
 const style = computed(() => {
+  const p = placed.value
   const s: Record<string, string | undefined> = {
     position: positioned.value ? 'absolute' : 'relative',
-    left: props.x !== undefined ? `${props.x}px` : undefined,
-    top: props.y !== undefined ? `${props.y}px` : undefined,
-    width: props.w !== undefined ? `${props.w}px` : undefined,
-    height: props.h !== undefined ? `${props.h}px` : props.type === 'line' ? '0px' : undefined,
-    minHeight: props.h === undefined && props.type !== 'line' ? '2em' : undefined,
-    transform: props.rotate ? `rotate(${props.rotate}deg)` : undefined,
+    left: p.x !== undefined ? `${p.x}px` : undefined,
+    top: p.y !== undefined ? `${p.y}px` : undefined,
+    width: p.w !== undefined ? `${p.w}px` : undefined,
+    height: p.h !== undefined ? `${p.h}px` : props.type === 'line' ? '0px' : undefined,
+    minHeight: p.h === undefined && props.type !== 'line' ? '2em' : undefined,
+    transform: rot.value ? `rotate(${rot.value}deg)` : undefined,
     textAlign: props.align,
     fontSize: props.size !== undefined ? `${props.size}px` : undefined,
     color: props.color,
@@ -127,7 +139,7 @@ const opts = computed(() => {
     type: props.type,
     fill: props.fill,
     line: props.line,
-    rotate: props.rotate,
+    rotate: rot.value,
     padding: props.padding,
     valign: props.valign,
     align: props.align,
@@ -147,6 +159,7 @@ const opts = computed(() => {
     :data-ppt-opts="opts"
     :style="style"
     class="ppt-shape"
+    @dblclick="dragged.onDblclick"
   >
     <svg
       v-if="!isCssShape && props.type !== 'line'"
@@ -165,7 +178,7 @@ const opts = computed(() => {
         </marker>
       </defs>
       <line
-        x1="0" y1="0" x2="100%" :y2="props.h ? '100%' : '0'"
+        x1="0" y1="0" x2="100%" :y2="placed.h ? '100%' : '0'"
         :stroke="lineProps?.color ?? '#000000'"
         :stroke-width="lineProps?.width ?? 1"
         :stroke-dasharray="dashArray"
@@ -174,6 +187,7 @@ const opts = computed(() => {
       />
     </svg>
     <div v-if="props.type !== 'line'" class="ppt-shape-text" :style="{ padding: paddingCss }"><slot /></div>
+    <PptEditUi v-if="props.drag && props.type !== 'line'" tag="PptShape" :drag="props.drag" :dragging="dragged.dragging.value" @open="dragged.stop" />
   </div>
 </template>
 

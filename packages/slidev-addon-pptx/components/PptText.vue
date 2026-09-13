@@ -1,7 +1,9 @@
 <script setup lang="ts">
 // PPT 部品: テキスト枠（wip/design/ppt-components.md §1.2）。
 // 指定した props を CSS にも反映し（Slidev の見た目 = PPTX の見た目）、収集器には data-ppt-* 属性で渡す。
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { usePptDrag } from '../composables/usePptDrag'
+import PptEditUi from '../internals/PptEditUi.vue'
 
 type Dash = 'solid' | 'dash' | 'dot'
 interface LineProps {
@@ -16,6 +18,8 @@ const props = withDefaults(
     y?: number
     w?: number
     h?: number
+    /** 試作: ドラッグで動かすときの id。位置はスライドの frontmatter の dragPos[drag] に保存され、x y w h より優先する */
+    drag?: string
     export?: 'native' | 'image'
     name?: string
     align?: 'left' | 'center' | 'right' | 'justify'
@@ -32,7 +36,11 @@ const props = withDefaults(
   { export: 'native', name: '', valign: 'top', radius: 0, padding: 0 },
 )
 
-const box = computed(() => {
+const root = ref<HTMLElement | null>(null)
+const dragged = usePptDrag(props, root, { rotatable: false })
+
+const box = computed<Record<string, number>>(() => {
+  if (dragged.box.value) return { ...dragged.box.value }
   const b: Record<string, number> = {}
   if (props.x !== undefined) b.x = props.x
   if (props.y !== undefined) b.y = props.y
@@ -41,6 +49,7 @@ const box = computed(() => {
   return b
 })
 const positioned = computed(() => Object.keys(box.value).length > 0)
+const hasH = computed(() => box.value.h !== undefined)
 
 const lineCss = computed(() => {
   if (!props.line || props.line === 'none') return undefined
@@ -51,13 +60,14 @@ const lineCss = computed(() => {
 const paddingCss = computed(() => (Array.isArray(props.padding) ? props.padding.map((v) => `${v}px`).join(' ') : `${props.padding}px`))
 
 const style = computed(() => {
+  const b = box.value
   const s: Record<string, string | undefined> = {
     position: positioned.value ? 'absolute' : undefined,
-    left: props.x !== undefined ? `${props.x}px` : undefined,
-    top: props.y !== undefined ? `${props.y}px` : undefined,
-    width: props.w !== undefined ? `${props.w}px` : positioned.value ? 'max-content' : undefined,
-    maxWidth: positioned.value && props.w === undefined ? `calc(100% - ${props.x ?? 0}px)` : undefined,
-    height: props.h !== undefined ? `${props.h}px` : undefined,
+    left: b.x !== undefined ? `${b.x}px` : undefined,
+    top: b.y !== undefined ? `${b.y}px` : undefined,
+    width: b.w !== undefined ? `${b.w}px` : positioned.value ? 'max-content' : undefined,
+    maxWidth: positioned.value && b.w === undefined ? `calc(100% - ${b.x ?? 0}px)` : undefined,
+    height: hasH.value ? `${b.h}px` : undefined,
     textAlign: props.align,
     fontSize: props.size !== undefined ? `${props.size}px` : undefined,
     color: props.color,
@@ -68,17 +78,17 @@ const style = computed(() => {
     borderRadius: props.radius ? `${props.radius}px` : undefined,
     padding: paddingCss.value,
     boxSizing: 'border-box',
-    display: props.h !== undefined ? 'flex' : undefined,
-    flexDirection: props.h !== undefined ? 'column' : undefined,
-    justifyContent: props.h !== undefined ? (props.valign === 'middle' ? 'center' : props.valign === 'bottom' ? 'flex-end' : 'flex-start') : undefined,
+    display: hasH.value ? 'flex' : undefined,
+    flexDirection: hasH.value ? 'column' : undefined,
+    justifyContent: hasH.value ? (props.valign === 'middle' ? 'center' : props.valign === 'bottom' ? 'flex-end' : 'flex-start') : undefined,
   }
   return s
 })
 
 const opts = computed(() =>
   JSON.stringify({
-    // valign は h を指定したときだけ CSS に効く。効かないときは載せない（Slidev と PPTX の見た目を揃える）
-    valign: props.h !== undefined ? props.valign : undefined,
+    // valign は h があるときだけ CSS に効く。効かないときは載せない（Slidev と PPTX の見た目を揃える）
+    valign: hasH.value ? props.valign : undefined,
     align: props.align,
     fill: props.fill,
     line: props.line,
@@ -90,6 +100,7 @@ const opts = computed(() =>
 
 <template>
   <div
+    ref="root"
     data-ppt="text"
     :data-ppt-export="props.export"
     :data-ppt-name="props.name"
@@ -97,8 +108,10 @@ const opts = computed(() =>
     :data-ppt-opts="opts"
     :style="style"
     class="ppt-text"
+    @dblclick="dragged.onDblclick"
   >
     <slot />
+    <PptEditUi v-if="props.drag" tag="PptText" :drag="props.drag" :dragging="dragged.dragging.value" @open="dragged.stop" />
   </div>
 </template>
 

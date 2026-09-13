@@ -245,24 +245,31 @@ pnpm slidev build
 </v-click>
 
 ---
+dragPos:
+  arrow: 610,248,140,44
+  ellipse: 391,173,120,64,72
+  lead: 29,259,396,170
+  table: 504,106,196,154
+---
 
 ## PPT 部品
 
-Markdown の見出し・段落・箇条書き・表はそのままネイティブ書き出しされます。図形や座標指定が要るところだけ PPT 部品を使います。
+Markdown の見出し・段落・箇条書き・表はそのままネイティブ書き出しされます。図形や座標指定が要るところだけ PPT 部品を使います。（試作: 部品をダブルクリックすると動かせます）
 
-<PptShape type="rightArrow" :x="60" :y="330" :w="140" :h="44" fill="#3b82f6" line="none" color="#ffffff">次へ</PptShape>
+<PptShape drag="arrow" type="rightArrow" :x="60" :y="330" :w="140" :h="44" fill="#3b82f6" line="none" color="#ffffff">次へ</PptShape>
 
-<PptText :x="230" :y="320" :w="300" fill="#eef2ff" :radius="8" :padding="12" name="lead">
+<PptText drag="lead" :x="230" :y="320" :w="300" fill="#eef2ff" :radius="8" :padding="12" name="lead">
 
-**座標指定**のテキスト枠。`x` `y` を書かなければ実測配置になります。
+**座標指定**のテキスｄｄｄｄｄ
+ト枠。`x` `y` を書かなければ実測配置になります。
 
 </PptText>
 
-<PptShape type="ellipse" :x="560" :y="320" :w="120" :h="64" fill="#fde68a" line="#b45309">楕円</PptShape>
+<PptShape drag="ellipse" type="ellipse" :x="560" :y="320" :w="120" :h="64" fill="#fde68a" line="#b45309">楕あ</PptShape>
 
-<PptShape type="line" :x="60" :y="430" :w="620" :h="0" :line="{ color: '#94a3b8', width: 2, tail: 'arrow' }" />
+<PptShape drag="line" type="line" :x="60" :y="430" :w="620" :h="0" :line="{ color: '#94a3b8', width: 2, tail: 'arrow' }" />
 
-<PptTable :x="720" :y="300" :rows="[['部品', '出るもの'], ['PptText', 'テキスト枠'], ['PptShape', '図形']]" />
+<PptTable drag="table" :x="720" :y="300" :rows="[['部品', '出るもの'], ['PptText', 'テキスト枠'], ['PptShape', '図形']]" />
 
 ---
 layout: center

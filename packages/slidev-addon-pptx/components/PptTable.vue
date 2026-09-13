@@ -2,6 +2,7 @@
 // PPT 部品: 表（wip/design/ppt-components.md §1.5）。slot の Markdown 表か、`rows` から描く。両方あれば slot を優先。
 // slot の表にも colW / border / fill / valign を効かせる（colW は描画後に 1 行目のセルへ幅を当てる）。
 import { computed, onMounted, ref, useSlots, watchEffect } from 'vue'
+import { usePptDrag } from '../composables/usePptDrag'
 
 interface BorderProps {
   color?: string
@@ -14,6 +15,8 @@ const props = withDefaults(
     y?: number
     w?: number
     h?: number
+    /** 試作: ドラッグで動かすときの id。位置はスライドの frontmatter の dragPos[drag] に保存され、x y w h より優先する */
+    drag?: string
     export?: 'native' | 'image'
     name?: string
     rows?: string[][]
@@ -31,8 +34,10 @@ const props = withDefaults(
 const slots = useSlots()
 const useRows = computed(() => !slots.default && !!props.rows?.length)
 const root = ref<HTMLElement | null>(null)
+const dragged = usePptDrag(props, root, { rotatable: false })
 
-const box = computed(() => {
+const box = computed<Record<string, number>>(() => {
+  if (dragged.box.value) return { ...dragged.box.value }
   const b: Record<string, number> = {}
   if (props.x !== undefined) b.x = props.x
   if (props.y !== undefined) b.y = props.y
@@ -50,10 +55,10 @@ const borderCss = computed(() => {
 
 const style = computed(() => ({
   position: positioned.value ? 'absolute' : undefined,
-  left: props.x !== undefined ? `${props.x}px` : undefined,
-  top: props.y !== undefined ? `${props.y}px` : undefined,
-  width: props.w !== undefined ? `${props.w}px` : positioned.value ? 'max-content' : undefined,
-  height: props.h !== undefined ? `${props.h}px` : undefined,
+  left: box.value.x !== undefined ? `${box.value.x}px` : undefined,
+  top: box.value.y !== undefined ? `${box.value.y}px` : undefined,
+  width: box.value.w !== undefined ? `${box.value.w}px` : positioned.value ? 'max-content' : undefined,
+  height: box.value.h !== undefined ? `${box.value.h}px` : undefined,
   fontSize: props.size !== undefined ? `${props.size}px` : undefined,
   textAlign: props.align,
   // slot の表のセルに :deep で当てる
@@ -88,6 +93,7 @@ const opts = computed(() => JSON.stringify({ header: props.header, colW: props.c
     :data-ppt-opts="opts"
     :style="style"
     class="ppt-table"
+    @dblclick="dragged.onDblclick"
   >
     <table v-if="useRows">
       <thead v-if="props.header && props.rows!.length">
