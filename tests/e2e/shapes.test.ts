@@ -38,6 +38,15 @@ interface DomShape {
   open: boolean
 }
 let dom: DomShape[] = []
+/**
+ * 書き出しの突き合わせが使う描画の結果。collect の describe の beforeAll が集めるので、
+ * `-t exportPptx` などで単独に回すと空になる。比べる図形が 0 件のまま通らないよう、件数が足りなければ落とす
+ */
+const domShapes = (): DomShape[] => {
+  const shapes = dom.filter((d) => d.type !== 'line')
+  if (shapes.length < 186) throw new Error(`描画の結果が ${shapes.length} 件しか無い（186 件以上が要る）。突き合わせは collect の describe と一緒に回す`)
+  return dom
+}
 
 /** Slidev と PPTX が使うはずの図形名と調整値（未知の名前は rect、roundRect は radius の換算） */
 const expected = (d: DomShape) => {
@@ -359,7 +368,7 @@ describe('exportPptx: 図形 187 種', () => {
 
   it('突き合わせ: 全図形の prst と <a:avLst> の gd が、Slidev が形を作った図形名と normalizeAdjust の結果に一致する', () => {
     const bad: string[] = []
-    for (const d of dom.filter((x) => x.type !== 'line')) {
+    for (const d of domShapes().filter((x) => x.type !== 'line')) {
       const want = expected(d)
       const sp = shape(d.name)
       const geom = els(sp as never, 'a', 'prstGeom')[0]
@@ -372,7 +381,7 @@ describe('exportPptx: 図形 187 種', () => {
 
   it('突き合わせ: 開いた path のある図形と線の矢じりの種類が <a:headEnd> / <a:tailEnd> と一致する', () => {
     const bad: string[] = []
-    const opened = dom.filter((d) => d.open)
+    const opened = domShapes().filter((d) => d.open)
     expect(opened.some((d) => d.head || d.tail)).toBe(true)
     for (const d of opened) {
       const ln = els(shape(d.name) as never, 'a', 'ln')[0]
