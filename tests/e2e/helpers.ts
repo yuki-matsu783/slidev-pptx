@@ -18,9 +18,14 @@ export interface Running {
 }
 
 export async function startSlidev(entry: string): Promise<Running> {
+  // vitest は NODE_ENV=test にする。その値だと Vite 開発サーバで UnoCSS がデッキ由来のクラスを生成しない
+  // （実測: test だと .pt-12 は永遠に 0px、development なら読み込み直後に 48px）。サーバを立てる間は development にする
+  const prev = process.env.NODE_ENV
+  process.env.NODE_ENV = 'development'
   const options = await resolveOptions({ entry }, 'export')
   const server = await createServer(options, { server: { port: 0 } })
   await server.listen()
+  process.env.NODE_ENV = prev
   const addr = server.httpServer?.address()
   const port = typeof addr === 'object' && addr ? addr.port : Number(server.config.server.port)
   return { port, base: `http://localhost:${port}`, close: () => server.close() }

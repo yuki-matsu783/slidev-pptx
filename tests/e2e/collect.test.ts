@@ -110,11 +110,15 @@ describe('collect: 箇条書きと run（§3.2、§3.4）', () => {
     expect(body.paragraphs.at(-1)?.runs.map((r) => r.text).join('')).toContain('クリックの文')
     expect(body.paragraphs.at(-1)?.kind).toBe('plain')
   })
-  it('img（規則 6）: src は絶対 URL、alt。a > img は要素の link', () => {
+})
+
+describe('collect: img（§2.2 の 6）', () => {
+  it('img: src は絶対 URL、alt。a > img は要素の link', () => {
     // デッキは裸の <img> で書いてある。Markdown の ![]() は <p><img></p> になり、規則 11 が先に当たって
     // 規則 6 に届かない（設計 §2.2 に「p の中身が img だけなら p ごと」の特例は無い。README の design-feedback 候補）。
-    // <a> は 3 行に割って HTML ブロックにしてある（1 行に 2 タグ以上だと段落に落ちる）。規則 12 のタグ一覧に a が無い点も候補
-    const imgs = images(slide(S.bullets))
+    // <a> は 3 行に割って HTML ブロックにしてある（1 行に 2 タグ以上だと段落に落ちる）。規則 12 のタグ一覧に a が無い点も候補。
+    // 置き場は「表と線」のスライド（箇条書きのスライドは 552 px を超え、下の画像がキャンバスの外に出る）
+    const imgs = images(slide(S.table))
     expect(imgs).toHaveLength(2)
     expect(imgs[0].src).toMatch(/^http.*\/bg\.png$/)
     expect(imgs[0].alt).toBe('代替文字')

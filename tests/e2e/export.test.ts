@@ -118,9 +118,10 @@ describe('exportPptx: plain.md', () => {
     expect(imageNamed[0].localName).toBe('sp')
   })
 
-  it('ノートが段落に割れて入る', async () => {
+  it('ノートが段落に割れて入る（本文の placeholder だけを見る。PptxGenJS はスライド番号のフィールドも別の <p:sp> に出す）', async () => {
     const doc = await p.xml(`ppt/notesSlides/notesSlide${S.cover}.xml`)
-    const texts = els(doc, 'a', 'p').map((x) => els(x, 'a', 't').map((t) => t.textContent).join('')).filter(Boolean)
+    const body = els(doc, 'p', 'sp').find((sp) => els(sp, 'p', 'ph')[0]?.getAttribute('type') === 'body')!
+    const texts = els(body, 'a', 'p').map((x) => els(x, 'a', 't').map((t) => t.textContent).join('')).filter(Boolean)
     expect(texts).toEqual(['ノート 1 行目', 'ノート 2 行目', '• 箇条書き'])
   })
 

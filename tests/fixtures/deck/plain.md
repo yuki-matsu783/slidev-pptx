@@ -40,12 +40,6 @@ Markdown で書くスライド
 
 <div v-click class="mt-4">クリックの文（v-click は装飾を持たない div）</div>
 
-<img src="/bg.png" alt="代替文字" width="120" height="30">
-
-<a href="https://sli.dev">
-<img src="/bg.png" alt="リンクつき画像" width="120" height="30">
-</a>
-
 ---
 layout: two-cols
 layoutClass: gap-8
@@ -78,6 +72,13 @@ const a = 1
 ***
 
 段落のあとの表（区切りブロックで枠が割れる）
+
+<!-- UnoCSS のリセットは img を display:block; height:auto にするので、大きさは style で指定する。箇条書きのスライドは 552 px を超えるためここに置く -->
+<img src="/bg.png" alt="代替文字" style="width:120px;height:30px">
+
+<a href="https://sli.dev">
+<img src="/bg.png" alt="リンクつき画像" style="width:120px;height:30px">
+</a>
 
 ---
 
