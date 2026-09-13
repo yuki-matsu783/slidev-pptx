@@ -1,5 +1,4 @@
-// PPT 部品（ppt-components.md §1）を使うデッキ。アドオンの実装（フェーズ 4）が入るまで skip。
-// 有効化するときは `describe.skip` を `describe` に戻す。
+// PPT 部品（ppt-components.md §1）を使うデッキ。
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Browser } from 'playwright-chromium'
 import { collect } from '../../packages/slidev-addon-pptx/src/collect/index'
@@ -11,7 +10,7 @@ let server: Running
 let browser: Browser
 let capture: Capture
 
-describe.skip('collect: PPT 部品（フェーズ 4 で有効化）', () => {
+describe('collect: PPT 部品', () => {
   beforeAll(async () => {
     server = await startSlidev(COMPONENTS)
     browser = await launch()

@@ -92,6 +92,16 @@ pnpm test:e2e    # = vitest run -c tests/vitest.e2e.config.ts  e2e と CLI（pla
 - native-export.md §8.2: 警告コード `W-LINK` を足す。PptxGenJS の `hyperlink.slide` は PPTX の中での順番なので、`--range` で絞ると元の番号とずれる。範囲内なら写像し、範囲外へのリンクは外して `W-LINK`（外さないと rels が実在しない slideN.xml を指して C4 で落ちる。実測）
 - native-export.md §7: `--range` は Slidev の `/print` では効かないことがある（`useNav` が初期化時に `query.range` を 1 度読むだけ）。URL に渡したうえで Node 側でも絞る（実測）
 
+## 設計 native-export.md §11「要確認」への答え（フェーズ 4 の実測）
+
+1. xmldom の往復: バイト列は同じにならない（空要素が `<x/>` に畳まれ、属性の改行が詰まり、テキストの CRLF が LF になる）。DOM としては等価で、2 回目以降は冪等（`tests/patch/pipeline.test.ts`）
+2. コードの行頭の空白: `<a:t>` に保たれる（`"  return a"` が convert と e2e の両方で一致）
+3. 空 placeholder を消したスライドの PowerPoint 実機: **未確認**（Windows が要る。人のレビューで）
+4. `getComputedStyle` のコスト: 12 枚のデッキで `page.evaluate(collect)` は体感 1 秒未満。別計測はしていない
+5. `omitBackground`: 置き換え画像は撮れているが、祖先の塗りが透けるかは**未確認**（plain.md の置き換え要素は白背景の上にあるため見分けが付かない）
+6. spTree の順 = add した順、自動追加 placeholder は末尾: 表・画像・図形が混ざるスライドでも成立（`tests/build/convert.test.ts` の「spTree の図形数」）
+7. `margin` の並び: 4.0.1 でも `[l, r, b, t]`（`tests/fixtures/gen-pptx.test.ts`）
+
 ## フェーズ 4 で最初に確かめること
 
 - vitest が `tests/**` を ESM として動かすとき `import.meta.url` が取れること（`__dirname` は使わず `here` に統一。vitest の config も同じ）
