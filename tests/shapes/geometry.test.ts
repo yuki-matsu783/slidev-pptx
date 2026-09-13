@@ -19,7 +19,17 @@ function expectPoints(actual: number[], expected: number[]) {
   actual.forEach((v, i) => expect(v).toBeCloseTo(expected[i], 2))
 }
 
-describe('shapes/geometry: 名前', () => {
+function expectFinite(name: string, w: number, h: number, adj?: Record<string, number>) {
+  const g = evalPreset(name, w, h, adj)
+  expect(g.paths.length).toBeGreaterThan(0)
+  for (const p of g.paths) {
+    expect(p.d).not.toMatch(/NaN|Infinity/)
+    expect(p.d).toMatch(/^M/)
+  }
+  for (const v of Object.values(g.textRect)) expect(Number.isFinite(v)).toBe(true)
+}
+
+describe('shapes/geometry: 名前と引数', () => {
   it('187 種で、isPreset は定義にある名前だけ真', () => {
     expect(PRESET_NAMES).toHaveLength(187)
     expect(isPreset('rect')).toBe(true)
@@ -31,21 +41,17 @@ describe('shapes/geometry: 名前', () => {
   it('未知の名前は例外', () => {
     expect(() => evalPreset('nope', 100, 100)).toThrow(/nope/)
   })
+  it('有限でない大きさは例外', () => {
+    expect(() => evalPreset('rect', Number.NaN, 50)).toThrow(/有限/)
+    expect(() => evalPreset('rect', 50, Number.POSITIVE_INFINITY)).toThrow(/有限/)
+  })
 })
 
 describe('shapes/geometry: 187 種すべて', () => {
-  const sizes: [number, number][] = [[200, 100], [100, 200], [150, 150]]
+  const sizes: [number, number][] = [[200, 100], [100, 200], [150, 150], [0, 0], [0, 100]]
   for (const name of PRESET_NAMES) {
-    it(`${name} は 3 通りの縦横比で有限の値になる`, () => {
-      for (const [w, h] of sizes) {
-        const g = evalPreset(name, w, h)
-        expect(g.paths.length).toBeGreaterThan(0)
-        for (const p of g.paths) {
-          expect(p.d).not.toMatch(/NaN|Infinity/)
-          expect(p.d).toMatch(/^M/)
-        }
-        for (const v of Object.values(g.textRect)) expect(Number.isFinite(v)).toBe(true)
-      }
+    it(`${name} は 3 通りの縦横比と大きさ 0 で有限の値になる`, () => {
+      for (const [w, h] of sizes) expectFinite(name, w, h)
     })
   }
 })
@@ -115,6 +121,89 @@ describe('shapes/geometry: 座標', () => {
     expect(g.paths[1]).toMatchObject({ fill: 'none', stroke: true })
   })
 
+  it('at2 は at2 x y = atan2(y, x): flowChartMagneticTape の最後の円弧は枠の対角の向きで楕円に当たる', () => {
+    // ang1 = at2 w h = atan2(100, 200) = 26.565°。見た目の角度 θ の媒介変数 t = atan2(100·sinθ, 50·cosθ) = 45°
+    // → 終点 (100 + 100·cos45°, 50 + 50·sin45°) = (170.711, 85.355)。ib = vc + sin hd2 45° = 85.355
+    const g = evalPreset('flowChartMagneticTape', 200, 100)
+    expect(g.paths[0].d).toBe(
+      'M100 100 A100 50 0 0 1 0 50 A100 50 0 0 1 100 0 A100 50 0 0 1 200 50 A100 50 0 0 1 170.711 85.355 L200 85.355 L200 100 Z',
+    )
+  })
+
+  it('tan は tan x y = x·tan(y): swooshArrow の矢じり', () => {
+    // alfa = */ cd4 1 14 = 90°/14、tan(alfa) = 0.112673。ssd8 = 12.5、ad1 = h·a1/100000 = 25、ad2 = ss·a2/100000 = 16.667
+    // xB = r − ad2 = 183.333、yB = ssd8 = 12.5、dx0 = tan ssd8 alfa = 1.408 → xC = 181.925
+    // dx1 = tan ad1 alfa = 2.817 → xF = 186.150、xE = xF + dx0 = 187.558、yF = 37.5、yE = 50、yD = +- t dy22 dy3 = 25 − 5 = 20
+    // xP1 = wd6 = 33.333、yP1 = hd6 + hd6 = 33.333、xP2 = wd4 = 50、yP2 = yF + hd6/2 = 45.833
+    const cmds = parse(evalPreset('swooshArrow', 200, 100).paths[0].d)
+    expect(cmds.map((c) => c.op).join('')).toBe('MQLLLLQZ')
+    expectPoints(cmds[1].args, [33.333, 33.333, 183.333, 12.5])
+    expectPoints(cmds[2].args, [181.925, 0])
+    expectPoints(cmds[3].args, [200, 20])
+    expectPoints(cmds[4].args, [187.558, 50])
+    expectPoints(cmds[5].args, [186.15, 37.5])
+    expectPoints(cmds[6].args, [50, 45.833, 0, 100])
+  })
+
+  it('sqrt と +/ と Q: teardrop の既定', () => {
+    // r2 = sqrt 2、tw = wd2·r2 = 141.421、th = hd2·r2 = 70.711、a = 100000 → sw = tw、sh = th
+    // dx1 = cos sw 45° = 100、dy1 = sin sh 45° = 50 → x1 = hc + 100 = 200、y1 = vc − 50 = 0
+    // x2 = +/ hc x1 2 = (100 + 200)/2 = 150、y2 = +/ vc y1 2 = 25
+    expect(evalPreset('teardrop', 200, 100).paths[0].d).toBe(
+      'M0 50 A100 50 0 0 1 100 0 Q150 0 200 0 Q200 25 200 50 A100 50 0 0 1 100 100 A100 50 0 0 1 0 50 Z',
+    )
+  })
+
+  it('max と min: wave の adj2 = 5000 の文字の枠', () => {
+    // dx1 = w·a2/100000 = 10、of2 = 20 → dx2 = ?: of2 0 of2 = 0、dx5 = 20 → x2 = 0、x5 = 180、x6 = 20、x10 = 200
+    // dx3 = (dx2 + x5)/3 = 60 → x3 = 60、x4 = (x3 + x5)/2 = 120、x7 = x6 + dx3 = 80、x8 = (x7 + x10)/2 = 140
+    // y1 = h·a1/100000 = 12.5、dy2 = y1·10/3 = 41.667 → y2 = −29.167、y3 = 54.167、y4 = 87.5、y5 = 45.833、y6 = 129.167
+    // il = max x2 x6 = 20、ir = min x5 x10 = 180、it = h·a1/50000 = 25、ib = 75
+    const g = evalPreset('wave', 200, 100, { adj2: 5000 })
+    expect(g.paths[0].d).toBe('M0 12.5 C60 -29.167 120 54.167 180 12.5 L200 87.5 C140 129.167 80 45.833 20 87.5 Z')
+    expect(g.textRect).toEqual({ l: 20, t: 25, r: 180, b: 75 })
+  })
+
+  it('abs: wedgeRectCallout の尾が上（adj2 = −62500）', () => {
+    // dxPos = w·(−20833)/100000 = −41.666、dyPos = −62.5 → xPos = 58.334、yPos = −12.5
+    // dq = dxPos·h/w = −20.833、dz = abs dyPos − abs dq = 41.667 > 0 → 尾は上の辺（xt = xPos、yt = yPos）
+    // dxPos < 0 → x1 = w·2/12 = 33.333、x2 = w·5/12 = 83.333。dyPos < 0 → y1 = h·2/12 = 16.667、y2 = 41.667
+    expect(evalPreset('wedgeRectCallout', 200, 100, { adj2: -62500 }).paths[0].d).toBe(
+      'M0 0 L33.333 0 L58.334 -12.5 L83.333 0 L200 0 L200 16.667 L200 16.667 L200 41.667 L200 100 L83.333 100 L33.333 100 L33.333 100 L0 100 L0 41.667 L0 16.667 L0 16.667 Z',
+    )
+  })
+
+  it('?: は x > 0 のときだけ y: chevron 100×200 は dx = 0 で文字の枠が枠全体', () => {
+    // ss = 100、a = 50000 → x1 = 50、x2 = r − x1 = 50、dx = x2 − x1 = 0 → il = ?: dx x1 l = l、ir = ?: dx x2 r = r
+    const g = evalPreset('chevron', 100, 200)
+    expect(g.paths[0].d).toBe('M0 0 L50 0 L100 100 L50 200 L0 200 L50 100 Z')
+    expect(g.textRect).toEqual({ l: 0, t: 0, r: 100, b: 200 })
+  })
+
+  it('ssdN は ss/N: stripedRightArrow 200×100（ss = 100）の縞', () => {
+    // ssd32 = 3.125、ssd16 = 6.25、ssd8 = 12.5、x4 = ss·5/32 = 15.625。dy1 = h·a1/200000 = 25、dx5 = ss·a2/100000 = 50 → x5 = 150
+    // dx6 = dy1·dx5/hd2 = 25 → x6 = 175
+    const g = evalPreset('stripedRightArrow', 200, 100)
+    expect(g.paths[0].d).toBe(
+      'M0 25 L3.125 25 L3.125 75 L0 75 Z M6.25 25 L12.5 25 L12.5 75 L6.25 75 Z M15.625 25 L150 25 L150 0 L200 50 L150 100 L150 75 L15.625 75 Z',
+    )
+    expect(g.textRect).toEqual({ l: 15.625, t: 25, r: 175, b: 75 })
+  })
+
+  it('mod は sqrt(x² + y² + z²): cornerTabs 300×400 の角の三角は対角 500 の 1/20', () => {
+    // md = mod w h 0 = 500、dx = md/20 = 25、x1 = r − dx = 275、y1 = b − dx = 375
+    const g = evalPreset('cornerTabs', 300, 400)
+    expect(g.paths.map((p) => p.d)).toEqual(['M0 0 L25 0 L0 25 Z', 'M0 375 L25 400 L0 400 Z', 'M275 0 L300 0 L300 25 Z', 'M300 375 L300 400 L275 400 Z'])
+    expect(g.textRect).toEqual({ l: 25, t: 25, r: 275, b: 375 })
+  })
+
+  it('負の swAng は sweep 0: flowChartOnlineStorage（path は 6×6）', () => {
+    // 60×60 なので倍率 10。moveTo 1,0 → (10,0)、lnTo 6,0 → (60,0)
+    // arcTo wR 1 hR 3 3cd4 −cd2: 中心 = (60,0) − (10·cos270°, 30·sin270°) = (60,30)、終点 90° = (60,60)
+    // lnTo 1,6 → (10,60)、arcTo 1 3 cd4 cd2: 中心 (10,30)、終点 270° = (10,0)
+    expect(evalPreset('flowChartOnlineStorage', 60, 60).paths[0].d).toBe('M10 0 L60 0 A10 30 0 0 0 60 60 L10 60 A10 30 0 0 1 10 0 Z')
+  })
+
   it('360 度の円弧は 2 つの半円に割る（actionButtonInformation の円）', () => {
     // arcTo r r 3cd4 21600000: 始点は円の頂上 → 半周で真下 (x, y+2r) → もう半周で始点に戻る
     const g = evalPreset('actionButtonInformation', 200, 100)
@@ -160,11 +249,43 @@ describe('shapes/geometry: 座標', () => {
       ['norm', false], ['darkenLess', false], ['darken', false], ['none', true], ['none', true],
     ])
   })
+})
 
-  it('大きさ 0 でも NaN にならない', () => {
-    for (const name of ['rightArrow', 'roundRect', 'star5']) {
-      const g = evalPreset(name, 0, 0)
-      for (const p of g.paths) expect(p.d).not.toMatch(/NaN|Infinity/)
-    }
+describe('shapes/geometry: 回帰（レビューの指摘）', () => {
+  it('半径 0 の円弧でも 90 度の倍数の向きが狂わない: leftBracket の adj = 0 は角の丸みの無い [', () => {
+    // y1 = ss·a/100000 = 0。arcTo w y1 cd4 cd4: hR = 0、中心 = (160,100) − (160·cos90°, 0) = (160,100)、終点 180° = (0,100)
+    // lnTo l y1 = (0,0)、arcTo w y1 cd2 cd4: 中心 (160,0)、終点 270° = (160,0)。Math.sin(π) ≠ 0 のままだと斜線になっていた
+    expect(evalPreset('leftBracket', 160, 100, { adj: 0 }).paths[1].d).toBe('M160 100 A160 0 0 0 1 0 100 L0 0 A160 0 0 0 1 160 0')
+  })
+
+  it('幅 0 の楕円でも軸の向きの点に届く: donut 100×200 の adj = 50000 の内側', () => {
+    // dr = ss·a/100000 = 50 → iwd2 = wd2 − dr = 0、ihd2 = hd2 − dr = 50。moveTo dr vc = (50,100)
+    // arcTo 0 50 cd2 −cd4: 中心 (50,100)、終点 90° = (50,150) → 0° = (50,100) → 270° = (50,50) → 180° = (50,100)
+    const d = evalPreset('donut', 100, 200, { adj: 50000 }).paths[0].d
+    expect(d.slice(d.lastIndexOf('M'))).toBe('M50 100 A0 50 0 0 0 50 150 A0 50 0 0 0 50 100 A0 50 0 0 0 50 50 A0 50 0 0 0 50 100 Z')
+  })
+
+  it('範囲内の adj で 0 割り・負の sqrt になっても NaN にしない（値は近似）', () => {
+    // circularArrow 系 adj5 = 0: +/ q11 q10 q4 の q4 = 0。pentagon hf = 0: */ y1 dx2 dx1 の dx1 = 0
+    // leftUpArrow / leftRightUpArrow / quadArrow adj2 = 0: il の分母 0。curved*Arrow: sqrt の中が負
+    expectFinite('circularArrow', 160, 100, { adj5: 0 })
+    expectFinite('leftCircularArrow', 160, 100, { adj5: 0 })
+    expectFinite('leftRightCircularArrow', 160, 100, { adj5: 0 })
+    expectFinite('pentagon', 160, 100, { hf: 0 })
+    expectFinite('leftUpArrow', 160, 100, { adj2: 0 })
+    expectFinite('leftRightUpArrow', 160, 100, { adj2: 0 })
+    expectFinite('quadArrow', 160, 100, { adj2: 0 })
+    expectFinite('curvedUpArrow', 100, 100, { adj1: 51000 })
+    expectFinite('curvedDownArrow', 160, 100, { adj1: 100000 })
+  })
+
+  it('180 度を超える円弧は割る: arc の adj1 = 0, adj2 = 21599999 が消えない', () => {
+    // stAng = 0 → 始点 (hc + wd2, vc) = (200,50)。swAng = 21599999（360° 未満）を 2 つに割る → ほぼ (0,50) を経て (200,50) へ
+    // 1 つの A だと始点と終点が丸めで重なり、SVG は円弧を描かない
+    expect(evalPreset('arc', 200, 100, { adj1: 0, adj2: 21599999 }).paths[1].d).toBe('M200 50 A100 50 0 0 1 0 50 A100 50 0 0 1 200 50')
+  })
+
+  it('arc の adj1 = adj2 は 1 周（swAng = ?: sw11 sw11 sw12 で sw11 = 0 は 0 より大きくない）', () => {
+    expect(evalPreset('arc', 200, 100, { adj1: 0, adj2: 0 }).paths[1].d).toBe('M200 50 A100 50 0 0 1 0 50 A100 50 0 0 1 200 50')
   })
 })
