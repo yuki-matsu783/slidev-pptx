@@ -74,17 +74,17 @@ export async function exportPptx(o: ExportOptions): Promise<Report> {
       if (/Failed to patch FloatingVue/.test(m.text())) consoleNoise++
       else pageErrors.push(m.text())
     })
-    const ready = await openPrint(page, base, o.range, timeout, o.wait ?? 0, slideCount)
+    let ready = await openPrint(page, base, o.range, timeout, o.wait ?? 0, slideCount)
 
     // Vite の依存最適化（"optimized dependencies changed. reloading"）が収集の最中に来ると実行文脈が壊れる。
-    // その場合は読み込み直しを待って 1 回だけやり直す
+    // その場合は読み込み直しを待って 1 回だけやり直す（番人の結果もやり直した側を採る）
     let capture: Capture
     try {
       capture = await page.evaluate(collect)
     } catch (e) {
       if (!/Execution context was destroyed|navigation|Target closed/i.test(String(e))) throw e
       await page.waitForLoadState('load', { timeout })
-      await openPrint(page, base, o.range, timeout, o.wait ?? 0, slideCount)
+      ready = await openPrint(page, base, o.range, timeout, o.wait ?? 0, slideCount)
       capture = await page.evaluate(collect)
     }
     // Slidev の /print は useNav の初期化時に query.range を 1 度読むだけで、この経路では効かないことがある。
@@ -166,17 +166,29 @@ async function openPrint(page: Page, base: string, range: string | undefined, ti
       await page.waitForTimeout(500)
     }
   }
-  /** デッキ由来のクラス（Slidev / KaTeX / Shiki / 部品のものを除く）に CSS 規則があるか。候補が無ければ 'none' */
+  /**
+   * UnoCSS がデッキ由来のクラスを生成しているか。2 つの信号のどちらかが「無い」なら missing。
+   *  A. DOM のデッキ由来クラス（Slidev / KaTeX の子孫 / Shiki / 部品のものを除く）のうち CSS 規則を持つ割合が 50% 以上
+   *     （実測: 生成前 0.03、生成後 0.81〜0.87。KaTeX の同梱 CSS や text-white は 1 つでも当たるので「1 つでも当たれば ok」では判定できない）
+   *  B. UnoCSS のレイヤ（data-vite-dev-id に __uno.css / __uno_shortcuts.css を持つ <style>）の長さが 1000 以上
+   *     （実測: 生成前 25 / 2572、生成後 1009 / 6539 以上。Vite と UnoCSS の内部に寄るので A の補助）
+   * 候補クラスが無いデッキは 'none'（判定しない）
+   */
   const unoState = () =>
     page.evaluate(() => {
       const classes = new Set<string>()
       document.querySelectorAll('[data-slidev-no] [class]').forEach((el) => {
+        if (el.closest('.katex, .mermaid, pre, svg')) return
         for (const c of Array.from(el.classList)) {
           if (/^(slidev-|ppt-|print-|katex|shiki|line$|mermaid|col-|highlighted|dishonored|my-auto|w-full|h-full|grid$|place-content-center)/.test(c)) continue
           if (/[-:/[\]]|\d/.test(c)) classes.add(c)
         }
       })
-      if (!classes.size) return 'none'
+      const layerLen = Array.from(document.querySelectorAll<HTMLStyleElement>('style[data-vite-dev-id]'))
+        .filter((s) => /__uno(_shortcuts)?\.css/.test(s.dataset.viteDevId ?? ''))
+        .reduce((n, s) => n + (s.textContent?.length ?? 0), 0)
+      const layerOk = layerLen >= 1000 || document.querySelector('style[data-vite-dev-id*="__uno"]') === null
+      if (!classes.size) return layerOk ? 'none' : 'missing'
       const hasRule = (cls: string) => {
         const needle = '.' + CSS.escape(cls)
         for (const ss of Array.from(document.styleSheets)) {
@@ -192,19 +204,16 @@ async function openPrint(page: Page, base: string, range: string | undefined, ti
       }
       let hit = 0
       for (const c of classes) if (hasRule(c)) hit++
-      return hit ? 'ok' : 'missing'
+      const ratioOk = hit / classes.size >= 0.5
+      return ratioOk && layerOk ? 'ok' : 'missing'
     })
 
   await waitRendered()
-  let unoReady = true
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const st = await unoState()
-    if (st !== 'missing') break
-    unoReady = false
+  let unoReady = (await unoState()) !== 'missing'
+  for (let attempt = 0; attempt < 3 && !unoReady; attempt++) {
     await page.reload({ waitUntil: 'networkidle', timeout })
     await waitRendered()
     unoReady = (await unoState()) !== 'missing'
-    if (unoReady) break
   }
   if (extraWait > 0) await page.waitForTimeout(extraWait)
   return { unoReady }
@@ -335,6 +344,9 @@ export function summaryLines(r: Report): string[] {
     .map(([k, v]) => `${k} ×${v}`)
     .join(', ')
   const lines = [`${r.output}: ${r.slides} slides, ${r.native} native, ${r.replaced} replaced, ${r.warnings.length} warnings${dropped ? `, dropped by rule: ${dropped}` : ''}`]
+  // --range で絞ると PPTX の番号と元の番号がずれる。対応表を 1 行出す（warning / replaced の slide は元の番号）
+  const mapped = Object.entries(r.slideMap).filter(([k, v]) => Number(k) !== v)
+  if (mapped.length) lines.push(`  slide numbers (pptx → source): ${mapped.map(([k, v]) => `${k}→${v}`).join(', ')}`)
   for (const x of r.replacements) lines.push(`  slide ${x.slide}  replaced  ${(x.reason ?? '').padEnd(15)} ${x.selector} (${x.elementId} "${x.name}") → image ${x.width}×${x.height}`)
   for (const w of r.warnings) lines.push(`  slide ${w.slide}  warning   ${w.code.padEnd(15)} ${w.message}${w.elementId ? ` (${w.elementId}${w.name ? ` "${w.name}"` : ''})` : ''}`)
   for (const c of r.check) lines.push(`  check    ${c.level.padEnd(8)} ${c.rule.padEnd(4)} ${c.part}: ${c.message}`)
