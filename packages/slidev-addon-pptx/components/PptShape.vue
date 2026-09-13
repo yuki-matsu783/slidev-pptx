@@ -11,7 +11,8 @@ function warnOnce(key: string, ...args: unknown[]): void {
 <script setup lang="ts">
 // PPT 部品: 図形（wip/design/ppt-components.md §1.3）。
 // line 以外は PowerPoint の図形の定義（src/shapes）を枠の実寸 px で評価し、inline SVG で描く。文字は上に重ねる。
-// 文字の枠: h を props で決めたときだけ定義の rect に置く。h が内容で決まるときは枠全体（文字の枠が高さに依存して循環するため）。
+// 文字の枠: w と h の両方を props で決めたときだけ定義の rect に置く。どちらかが内容で決まるときは枠全体（padding だけ）。
+// 文字の枠は大きさから決まるので、大きさを内容から測ると、測る → 枠が変わる → 大きさが変わる、と循環するため。
 // type="line" は対角線。矢じりの marker は部品ごとに一意な id を持つ（/print は全スライドを同時に描く）。
 // 形は定義どおりに描くだけで、見た目の補正はしない。たとえば cloudCallout は、調整値で泡（吹き出しの先）を雲の近くに置くと
 // 泡が雲に重なる（adj1: -30000 と太い線で目立つ）。直していない
@@ -66,21 +67,19 @@ const measured = ref<Record<string, number>>({})
 // SVG の実寸。w h が props に無い辺は ResizeObserver で測る（offset* は回転・拡大の前の px）
 const size = ref({ w: 0, h: 0 })
 let observer: ResizeObserver | undefined
-/** 0.5 px 未満の変化は無視する（文字の枠の余白が幅に効くとき、測り直しが続かないように） */
-const moved = (a: number | undefined, b: number) => a === undefined || Math.abs(a - b) >= 0.5
 const measure = () => {
   const el = root.value
   if (!el) return
   const w = el.offsetWidth
   const h = el.offsetHeight
-  if (moved(size.value.w, w) || moved(size.value.h, h)) size.value = { w, h }
-  // 回転前の枠は大きさが変わるたびに測り直す（幅や高さが内容で決まると、onMounted の後にも変わる）。
+  if (size.value.w !== w || size.value.h !== h) size.value = { w, h }
+  // 回転前の枠は大きさが変わるたびに測り直す（幅や高さが内容で決まると、フォントの読み込みなどで onMounted の後にも変わる）。
   // 大きさの変わらない位置だけの移動は ResizeObserver が知らせないので追わない
   if (props.rotate) {
     const m = measured.value
     const x = el.offsetLeft
     const y = el.offsetTop
-    if (moved(m.x, x) || moved(m.y, y) || moved(m.w, w) || moved(m.h, h)) measured.value = { x, y, w, h }
+    if (m.x !== x || m.y !== y || m.w !== w || m.h !== h) measured.value = { x, y, w, h }
   }
 }
 onMounted(() => {
@@ -220,8 +219,9 @@ const style = computed(() => {
 const textStyle = computed(() => {
   const s: Record<string, string | undefined> = { padding: paddingCss.value }
   if (props.flipV) s.transform = 'rotate(180deg)'
-  if (props.h !== undefined) {
-    // 文字の枠（反転した形の上での位置）を margin で空ける。上下の寄せは親の flex が枠の中で行う
+  if (props.w !== undefined && props.h !== undefined) {
+    // 文字の枠（反転した形の上での位置）を margin で空ける。上下の寄せは親の flex が枠の中で行う。
+    // w h がどちらも props なので、margin が枠の大きさに効いても測り直しは起きない
     const { l, t, r, b } = geometry.value.textRect
     const left = props.flipH ? W.value - r : l
     const right = props.flipH ? l : W.value - r
