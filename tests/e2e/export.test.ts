@@ -69,8 +69,7 @@ describe('exportPptx: plain.md', () => {
   it('警告コード（§8.2）: plain.md で出せるものが全部出る', () => {
     const codes = new Set(report.warnings.map((w) => w.code))
     for (const c of ['W-CSS', 'W-MATH-INLINE', 'W-LI-BLOCK', 'W-LAYOUT', 'W-OVERFLOW', 'W-OFFSLIDE', 'W-IMAGE', 'W-HIDDEN', 'W-TRANSITION', 'W-INLINE', 'W-LINK']) expect(codes.has(c), c).toBe(true)
-    // UnoCSS が効かないまま測ったときの W-RENDER は出ていない（番人が効いている）
-    expect(report.warnings.some((w) => w.code === 'W-RENDER' && /UnoCSS/.test(w.message))).toBe(false)
+    expect(report.warnings.some((w) => w.code === 'W-RENDER')).toBe(false)
     expect(report.warnings.filter((w) => w.code === 'W-TRANSITION')).toHaveLength(1)
     expect(report.warnings.some((w) => w.code === 'W-IMAGE' && w.slide === S.boxes)).toBe(true)
     expect(report.warnings.some((w) => w.code === 'W-OVERFLOW' && w.slide === S.offslide)).toBe(true)
@@ -91,6 +90,18 @@ describe('exportPptx: plain.md', () => {
     expect(report.dropped['transition']).toBe(1)
     expect(report.dropped['background-crop']).toBe(1)
     expect(report.warnings.some((w) => /highlight|blockquote/i.test(w.message))).toBe(false)
+  })
+
+  it('UnoCSS が効いたページを測っている（正の主張）: two-cols のコード枠は左列の幅、装飾つきの箱は 2 つの独立した枠', async () => {
+    // UnoCSS が死んだまま測ると、two-cols は縦積み（枠の幅 868 px 相当）になり、bg-blue / bg-green の箱は 1 枠に潰れる
+    const twoCols = await p.xml(`ppt/slides/slide${S.twoCols}.xml`)
+    const codeFrame = els(twoCols, 'p', 'sp').find((sp) => els(sp, 'a', 't').some((t) => /const a = 1/.test(t.textContent ?? '')))!
+    const cx = Number(els(codeFrame, 'a', 'ext')[0].getAttribute('cx'))
+    expect(cx / (12192000 / 980)).toBeLessThanOrEqual(460)
+    const boxes = await p.xml(`ppt/slides/slide${S.boxes}.xml`)
+    const filled = els(boxes, 'p', 'sp').filter((sp) => els(sp, 'a', 'srgbClr').some((c) => ['3B82F6', '22C55E'].includes(c.getAttribute('val') ?? '')))
+    expect(filled.length).toBeGreaterThanOrEqual(1)
+    expect(els(boxes, 'p', 'sp').some((sp) => els(sp, 'a', 't').some((t) => /塗りのある箱/.test(t.textContent ?? '')) && els(sp, 'p', 'ph').length === 0)).toBe(true)
   })
 
   it('zoom を使ったスライドが記録に出る', () => {
