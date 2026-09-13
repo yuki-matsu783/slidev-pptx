@@ -109,10 +109,11 @@ const opts = computed(() => JSON.stringify({ header: props.header, colW: props.c
 .ppt-table :deep(table) {
   width: 100%;
 }
+/* 変数が無いときは既定値へ（var() の解決失敗で初期値に倒れると vertical-align が baseline になる） */
 .ppt-table :deep(th),
 .ppt-table :deep(td) {
-  border: var(--ppt-cell-border);
-  background: var(--ppt-cell-bg);
-  vertical-align: var(--ppt-cell-valign);
+  border: var(--ppt-cell-border, initial);
+  background: var(--ppt-cell-bg, transparent);
+  vertical-align: var(--ppt-cell-valign, middle);
 }
 </style>

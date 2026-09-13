@@ -142,6 +142,8 @@ export function collect(): Capture {
 
     // ---------------------------------------------------------------- run
     let colorWarned = false
+    /** runStyle の中で出す警告に付ける要素 id。流し込みの段落は '?'（closeFlow が枠の id に付け替える） */
+    let elementIdForWarn: string | undefined = '?'
     const runStyle = (el: globalThis.Element, inCode: boolean, code: boolean): Omit<Run, 'text'> => {
       const s = cs(el)
       const parsed = parseColor(s.color)
@@ -157,10 +159,10 @@ export function collect(): Capture {
       }
       if (!knownColor(s.color) && !colorWarned) {
         colorWarned = true
-        warn('W-CSS', `再現できない色の形式を捨てた: ${s.color}（黒にした）`, '?')
+        warn('W-CSS', `再現できない色の形式を捨てた: ${s.color}（黒にした）`, elementIdForWarn)
       }
       if (!inCode) {
-        const o = effectiveOpacity(el) * (alphaOf(s.color) || (parsed ? 1 : 1))
+        const o = effectiveOpacity(el) * (parsed ? alphaOf(s.color) || 1 : 1)
         if (o < 1) r.transparency = Math.round((1 - o) * 100 * 1e6) / 1e6
       }
       if (code || el.closest('mark')) {
@@ -172,22 +174,32 @@ export function collect(): Capture {
       if (el.closest('sub')) r.sub = true
       const a = el.closest('a[href]') as HTMLAnchorElement | null
       if (a) {
-        const link = linkOf(a)
+        const link = linkOf(a, elementIdForWarn)
         if (link) r.link = link
       }
       if (s.letterSpacing && s.letterSpacing !== 'normal') r.charSpacing = len(s.letterSpacing)
-      if (s.textTransform && s.textTransform !== 'none') warn('W-CSS', '再現できない装飾を捨てた: text-transform', '?')
+      if (s.textTransform && s.textTransform !== 'none') warn('W-CSS', '再現できない装飾を捨てた: text-transform', elementIdForWarn)
       return r
     }
-    const linkOf = (a: HTMLAnchorElement): Run['link'] | undefined => {
+    const linkOf = (a: HTMLAnchorElement, id: string | undefined = elementIdForWarn): Run['link'] | undefined => {
       const href = a.getAttribute('href') ?? ''
       const m = /^#{1,2}(\d+)$/.exec(href) ?? /^\/(\d+)$/.exec(href)
       if (m) return { slide: Number(m[1]) }
       // a.href は正規化で末尾に / が付く。書いたままの URL を残す。
       // 数字でないアンカーや相対パスは開発サーバの URL に解決されて PPTX に残るので外す
       if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return { url: href }
-      warn('W-LINK', `相対リンク "${href}" は PPTX に持ち込めないので外した`, '?')
+      warn('W-LINK', `相対リンク "${href}" は PPTX に持ち込めないので外した`, id)
       return undefined
+    }
+    /** 枠の id が決まっている処理の間、runStyle / linkOf の警告にその id を付ける */
+    const withWarnId = <T>(id: string | undefined, fn: () => T): T => {
+      const prev = elementIdForWarn
+      elementIdForWarn = id
+      try {
+        return fn()
+      } finally {
+        elementIdForWarn = prev
+      }
     }
 
     /** <br>: 直前の run に breakAfter。既に立っていれば（連続 <br>）空の run を挟む。先頭なら空の run */
@@ -537,9 +549,11 @@ export function collect(): Capture {
         const walkInner = (parent: globalThis.Element) => {
           for (const c of Array.from(parent.children)) {
             if ((c as HTMLElement).dataset?.ppt !== undefined) continue
+            // 部品自身の描画（PptShape の SVG）は中身ではない
+            if (c.classList.contains('ppt-shape-svg') || c.classList.contains('ppt-shape-line')) continue
             const t = tagOf(c)
             if (FLOW_TAGS.has(t) || t === 'PRE') out.push(...blockParagraphs(c, id))
-            else if (t === 'TABLE' || t === 'IMG' || t === 'BLOCKQUOTE' || REPLACE_TAGS.has(t) || c.classList.contains('katex-display')) warn('W-PPT-CONTENT', `PptText の中の ${t.toLowerCase()} は無視した`, id)
+            else if (t === 'TABLE' || t === 'IMG' || t === 'BLOCKQUOTE' || REPLACE_TAGS.has(t) || c.classList.contains('katex-display')) warn('W-PPT-CONTENT', `Ppt${type === 'shape' ? 'Shape' : 'Text'} の中の ${t.toLowerCase()} は無視した`, id)
             else if (t === 'BR') {
               /* 段落の中で扱う */
             } else walkInner(c)
@@ -569,8 +583,7 @@ export function collect(): Capture {
       else if (Array.isArray(opts.padding)) frame.inset = opts.padding as FrameStyle['inset']
 
       if (type === 'text') {
-        const t = pushFrame(el, inner(), frame, id, 'ppt', { name, box, boxSource, valign: (opts.valign as TextElement['valign']) ?? 'top' })
-        void t
+        pushFrame(el, withWarnId(id, inner), frame, id, 'ppt', { name, box, boxSource, valign: (opts.valign as TextElement['valign']) ?? 'top' })
         void region
         return
       }
@@ -585,7 +598,7 @@ export function collect(): Capture {
           return
         }
         if (!frame.fill && opts.fill !== 'none') frame.fill = { color: '#ffffff' }
-        const paragraphs = inner()
+        const paragraphs = withWarnId(id, inner)
         elements.push({
           id, name, source: 'ppt', kind: 'shape', shape, box, boxSource, frame,
           rotate: typeof opts.rotate === 'number' ? opts.rotate : undefined,
@@ -674,7 +687,7 @@ export function collect(): Capture {
         const a = el.closest('a[href]') as HTMLAnchorElement | null
         const e = pushImage(el, { src: img.currentSrc || img.src, alt: img.alt || '' })
         if (a && a.closest('.slidev-layout, [data-slidev-no]')) {
-          const link = linkOf(a)
+          const link = linkOf(a, e.id)
           if (link) e.link = link
         }
         return
@@ -682,7 +695,8 @@ export function collect(): Capture {
       // 7
       if (tag === 'TABLE') {
         separator()
-        tableElement(el, nextId())
+        const id = nextId()
+        withWarnId(id, () => tableElement(el, id))
         return
       }
       // 8
@@ -699,10 +713,13 @@ export function collect(): Capture {
         separator()
         const id = nextId()
         const d = decorOf(el)
-        const paragraphs: Paragraph[] = []
-        const ps = Array.from(el.children).filter((c) => FLOW_TAGS.has(c.tagName))
-        if (ps.length) for (const p of ps) paragraphs.push(...blockParagraphs(p, id))
-        else paragraphs.push(paragraphOf(el, 'plain', 0, trimRuns(collectRuns(el, id, false))))
+        const paragraphs: Paragraph[] = withWarnId(id, () => {
+          const out: Paragraph[] = []
+          const ps = Array.from(el.children).filter((c) => FLOW_TAGS.has(tagOf(c)))
+          if (ps.length) for (const p of ps) out.push(...blockParagraphs(p, id))
+          else out.push(paragraphOf(el, 'plain', 0, trimRuns(collectRuns(el, id, false))))
+          return out
+        })
         pushFrame(el, paragraphs, { inset: d.inset, fill: d.fill, radius: d.radius }, id)
         drop('blockquote-border')
         return
@@ -739,7 +756,7 @@ export function collect(): Capture {
           // 13: 自前のテキスト枠
           separator()
           const id = nextId()
-          const paragraphs = containerParagraphs(el, id)
+          const paragraphs = withWarnId(id, () => containerParagraphs(el, id))
           const frame: FrameStyle = { inset: d.inset, fill: d.fill, line: d.line, radius: d.radius }
           const t = pushFrame(el, paragraphs, frame, id)
           if (d.transform) {
@@ -856,7 +873,7 @@ export function collect(): Capture {
             continue
           }
           flush()
-          if (FLOW_TAGS.has(t) || t === 'PRE') out.push(...blockParagraphs(c, id))
+          if (FLOW_TAGS.has(t)) out.push(...blockParagraphs(c, id))
           else if (c.querySelector('p, ul, ol, h1, h2, h3, h4, h5, h6, div, pre')) rec(c)
           else {
             // 透明な入れ物: 自分の段落として

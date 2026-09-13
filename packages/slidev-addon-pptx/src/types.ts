@@ -26,6 +26,8 @@ export interface SlideCapture {
   backgroundColor: string
   elements: Element[]
   warnings: Warning[]
+  /** 規則として捨てたものの件数（'code-highlight' 'blockquote-border' など）。Report.dropped に合算する */
+  dropped?: Record<string, number>
 }
 
 export type Element = TextElement | ShapeElement | ImageElement | TableElement | LineElement
@@ -188,6 +190,8 @@ export interface Report {
   warnings: ReportWarning[]
   dropped: Record<string, number>
   zoom: Record<number, number>
+  /** PPTX の中の番号（slideN.xml）→ 元のスライド番号。--range で絞ると 2 つがずれる。warnings / replacements は元の番号 */
+  slideMap: Record<number, number>
   check: CheckResult[]
 }
 
@@ -218,6 +222,7 @@ export function emptyReport(output = ''): Report {
     warnings: [],
     dropped: {},
     zoom: {},
+    slideMap: {},
     check: [],
   }
 }

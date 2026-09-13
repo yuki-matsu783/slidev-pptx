@@ -74,8 +74,10 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
   const slides = [...capture.slides].sort((a, b) => a.no - b.no)
   report.slides = slides.length
   let keptTotal = 0
-  // PptxGenJS の hyperlink.slide は PPTX の中での順番（slideN.xml）。range で絞ると元の番号とずれるので写像する
+  // PptxGenJS の hyperlink.slide は PPTX の中での順番（slideN.xml）。range で絞ると元の番号とずれるので写像する。
+  // 後処理（shapeNames / autofit）も PPTX の番号で引く。Report の warnings / replacements は元の番号のまま（slideMap で突き合わせる）
   const slideIndexByNo = new Map(slides.map((s, i) => [s.no, i + 1]))
+  for (const [no, idx] of slideIndexByNo) report.slideMap[idx] = no
   const mapLink = (link: Run['link'] | undefined, no: number, id: string): Run['link'] | undefined => {
     if (!link || !('slide' in link)) return link
     const target = slideIndexByNo.get(link.slide)
@@ -92,8 +94,10 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
       warn(sc.no, { code: 'W-LAYOUT', message: `レイアウト "${layoutName}" は対応表に無いので blank にした` })
     }
     const slide = pptx.addSlide({ masterName: master })
+    const pptxNo = slideIndexByNo.get(sc.no)!
     const lang = sc.lang || opts.lang || 'ja-JP'
     if (sc.zoom && sc.zoom !== 1) report.zoom[sc.no] = sc.zoom
+    for (const [k, v] of Object.entries(sc.dropped ?? {})) report.dropped[k] = (report.dropped[k] ?? 0) + v
 
     // 背景（§5.5）
     const fmBg = data.slides[index]?.frontmatter?.background
@@ -150,7 +154,8 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
         const cy1 = Math.max(0, Math.min(canvas.height, y1))
         const cy2 = Math.max(0, Math.min(canvas.height, y2))
         const shift = Math.max(cx1 - x1, x2 - cx2, cy1 - y1, y2 - cy2)
-        if (cx2 - cx1 <= 0 && cy2 - cy1 <= 0) {
+        // どちらかの軸で全体がスライドの外なら落とす（水平線が y<0、縦線が x>幅 など）
+        if (x2 <= 0 || x1 >= canvas.width || y2 < 0 || y1 > canvas.height || (cx2 - cx1 <= 0 && cy2 - cy1 <= 0)) {
           warn(sc.no, { code: 'W-HIDDEN', elementId: e.id, message: 'スライドの外にあるので飛ばした' })
           continue
         }
@@ -174,7 +179,7 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
     }
 
     const names = assignNames(kept, roles, backgroundDim)
-    ctx.shapeNames[sc.no] = names
+    ctx.shapeNames[pptxNo] = names
     let ni = 0
     if (backgroundDim) {
       slide.addShape(pptx.ShapeType.rect, {
@@ -204,7 +209,7 @@ export async function build(input: Capture, data: DeckData, opts: BuildOptions):
       const box = boxes.get(e.id) ?? e.box
       switch (e.kind) {
         case 'text':
-          addText(pptx, slide, e, box, roles.get(e.id), master, name, lang, canvas, sc, ctx)
+          addText(pptx, slide, e, box, roles.get(e.id), master, name, lang, canvas, sc, pptxNo, ctx)
           break
         case 'shape':
           addShape(pptx, slide, e, box, name, lang, canvas)
@@ -247,6 +252,7 @@ function addText(
   lang: string,
   canvas: Canvas,
   sc: SlideCapture,
+  pptxNo: number,
   ctx: PatchContext,
 ): void {
   const runs = toRuns(e.paragraphs, lang, canvas, e.link)
@@ -266,17 +272,24 @@ function addText(
   if (e.rotate) o.rotate = e.rotate
   slide.addText(runs.length ? runs : [{ text: '' }], o)
 
-  // 縮小率（§3.3）: placeholder 枠は対応表の h（そのスライドのレイアウト）と比べ、自由配置は寄せた枠の h と比べる
+  // 縮小率（§3.3）。2 条件の大きいほうの不足率を採る:
+  //  A. Slidev 側で既に溢れている（fit.contentHeight > fit.boxHeight）
+  //  B. 出す枠（placeholder は対応表の h。対応表の px はキャンバス px と同じ空間。自由配置は寄せた枠の h）より内容が高い
+  // フォントの違い（計測環境と PowerPoint）で数 % は動くので、5% を超えて溢れるときだけ書く
   const ph = role ? placeholderBox(master, role) : undefined
-  const boxH = ph ? (ph.h * canvas.width) / 980 : box.h
+  const targetH = ph ? ph.h : box.h
   const contentH = e.fit?.contentHeight ?? 0
-  if (contentH > 0 && boxH > 0 && contentH > boxH) {
+  const ratios: number[] = []
+  if (contentH > 0 && e.fit.boxHeight > 0 && contentH > e.fit.boxHeight) ratios.push(e.fit.boxHeight / contentH)
+  if (contentH > 0 && targetH > 0 && contentH > targetH) ratios.push(targetH / contentH)
+  const ratio = Math.min(...ratios, 1)
+  if (ratio < 0.95) {
     const scale: AutofitScale = {
-      fontScale: Math.max(25000, Math.floor((boxH / contentH) * 100) * 1000),
+      fontScale: Math.max(25000, Math.floor(ratio * 100) * 1000),
       lnSpcReduction: 0,
     }
     scale.lnSpcReduction = scale.fontScale < 90000 ? 20000 : 10000
-    ;(ctx.autofit[sc.no] ??= {})[name] = scale
+    ;(ctx.autofit[pptxNo] ??= {})[name] = scale
     ctx.report.warnings.push({ code: 'W-OVERFLOW', elementId: e.id, slide: sc.no, name, message: `枠に収まらないので縮小率 ${scale.fontScale / 1000}% を書いた` })
   }
 }
@@ -442,6 +455,7 @@ function addTable(slide: PptxGenJS.Slide, e: TableElement, box: Box, name: strin
     x: emu(box.x, canvas),
     y: emu(box.y, canvas),
     w: emu(box.w, canvas),
+    h: emu(Math.min(box.h, total * scale), canvas),
     colW: e.colW.map((w) => emu(w, canvas)),
     rowH: e.rowH.map((h) => emu(h * scale, canvas)),
     objectName: name,

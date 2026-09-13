@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 import { createServer, resolveOptions } from '@slidev/cli'
 import playwright from 'playwright-chromium'
 import type { Browser, Page } from 'playwright-chromium'
-import type { Capture, DeckData, Report, SlideCapture } from './types.ts'
+import type { Capture, DeckData, Report } from './types.ts'
 import { collect } from './collect/index.ts'
 import { build } from './build/convert.ts'
 import type { Asset } from './build/convert.ts'
@@ -66,11 +66,15 @@ export async function exportPptx(o: ExportOptions): Promise<Report> {
     const context = await browser.newContext({ deviceScaleFactor: 2, colorScheme: 'light', viewport: { width: canvasWidth, height: Math.min(16384, canvasHeight * Math.max(1, slideCount)) } })
     const page = await context.newPage()
     const pageErrors: string[] = []
+    let consoleNoise = 0
     page.on('pageerror', (e) => pageErrors.push(String(e.message ?? e)))
     page.on('console', (m) => {
-      if (m.type() === 'error' && !/FloatingVue/.test(m.text())) pageErrors.push(m.text())
+      if (m.type() !== 'error') return
+      // Slidev 52.19 + floating-vue の既知の雑音（"Failed to patch FloatingVue … Popper"）。描画には影響しない。落とした件数は記録に出す
+      if (/Failed to patch FloatingVue/.test(m.text())) consoleNoise++
+      else pageErrors.push(m.text())
     })
-    await openPrint(page, base, o.range, timeout, o.wait ?? 0, slideCount)
+    const ready = await openPrint(page, base, o.range, timeout, o.wait ?? 0, slideCount)
 
     // Vite の依存最適化（"optimized dependencies changed. reloading"）が収集の最中に来ると実行文脈が壊れる。
     // その場合は読み込み直しを待って 1 回だけやり直す
@@ -93,9 +97,8 @@ export async function exportPptx(o: ExportOptions): Promise<Report> {
 
     const layouts = Object.keys(await options.utils.getLayouts())
     const { pptx, ctx } = await build(capture, data, { assets, lang: o.lang, layouts, output, slidevVersion: slidevVersion() })
-    for (const sc of capture.slides as (SlideCapture & { dropped?: Record<string, number> })[]) {
-      for (const [k, v] of Object.entries(sc.dropped ?? {})) ctx.report.dropped[k] = (ctx.report.dropped[k] ?? 0) + v
-    }
+    if (consoleNoise) ctx.report.dropped['console-noise'] = (ctx.report.dropped['console-noise'] ?? 0) + consoleNoise
+    if (!ready.unoReady) ctx.report.warnings.push({ code: 'W-RENDER', slide: 0, message: 'UnoCSS のクラスが効いていないページを測った（再読み込みしても生成されなかった）。位置と色が Slidev と違う可能性がある' })
     for (const msg of pageErrors) ctx.report.warnings.push({ code: 'W-RENDER', slide: 0, message: `ブラウザでエラー: ${msg.slice(0, 200)}` })
     const raw = (await pptx.write({ outputType: 'nodebuffer' })) as Buffer
     const out = await postProcess(raw, PATCHES, ctx)
@@ -127,36 +130,84 @@ export function isValidRange(range: string): boolean {
 
 // ---------------------------------------------------------------- ブラウザ
 
-/** 設計 §1.2 の待機列 + UnoCSS の遅延注入を待つ */
-async function openPrint(page: Page, base: string, range: string | undefined, timeout: number, extraWait: number, expectedSlides: number): Promise<void> {
+/**
+ * 設計 §1.2 の待機列 + UnoCSS の番人。
+ * Vite の開発サーバでは、最初の読み込みで UnoCSS がデッキ由来のユーティリティを生成しないことがある（実測。再読み込みすると効く）。
+ * DOM にあるクラスのうち Slidev 自身のものでないクラスに CSS 規則が 1 つも無ければ、再読み込みして待ち直す。
+ * それでも来なければ unoReady: false を返す（黙って誤った値を測らない）
+ */
+async function openPrint(page: Page, base: string, range: string | undefined, timeout: number, extraWait: number, expectedSlides: number): Promise<{ unoReady: boolean }> {
   const url = `${base}/print?print=true${range ? `&range=${encodeURIComponent(range)}` : ''}`
   if (page.url() !== url) await page.goto(url, { waitUntil: 'networkidle', timeout })
   else await page.waitForLoadState('networkidle', { timeout })
   await page.emulateMedia({ colorScheme: 'light', media: 'screen' })
-  // Vite が初回に依存を最適化するとページを再読み込みする。枚数が揃うまで少し待って再試行する
-  // （/print は range を無視することがあるので、期待は「全枚数以上」ではなく「1 枚以上」で十分）
-  for (let i = 0; i < 10; i++) {
+
+  const waitRendered = async () => {
+    // Vite が初回に依存を最適化するとページを再読み込みする。枚数が揃うまで少し待って再試行する
+    for (let i = 0; i < 10; i++) {
+      await page.waitForSelector('[data-slidev-no]', { timeout })
+      const n = await page.evaluate(() => document.querySelectorAll('.print-slide-container').length)
+      if (n >= expectedSlides && (await page.evaluate(() => document.readyState)) === 'complete') break
+      await page.waitForTimeout(1000)
+    }
     await page.waitForSelector('[data-slidev-no]', { timeout })
-    const n = await page.evaluate(() => document.querySelectorAll('.print-slide-container').length)
-    if (n >= Math.min(1, expectedSlides) && (await page.evaluate(() => document.readyState)) === 'complete') break
-    await page.waitForTimeout(1000)
+    await page.waitForSelector('.slidev-slide-loading', { state: 'detached', timeout }).catch(() => {})
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-waitfor]')).every((el) => el.querySelector(el.getAttribute('data-waitfor')!)), null, { timeout }).catch(() => {})
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('.mermaid')).every((el) => (el.shadowRoot ?? el).querySelector('svg')), null, { timeout }).catch(() => {})
+    await page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout }).catch(() => {})
+    await page.waitForLoadState('networkidle')
+    // <style> の合計長が 2 回続けて（1 秒）動かないまで待つ
+    let last = -1
+    let stable = 0
+    for (let i = 0; i < 40 && stable < 2; i++) {
+      const len = await page.evaluate(() => Array.from(document.querySelectorAll('style')).reduce((n, s) => n + (s.textContent?.length ?? 0), 0))
+      stable = len === last ? stable + 1 : 0
+      last = len
+      await page.waitForTimeout(500)
+    }
   }
-  await page.waitForSelector('[data-slidev-no]', { timeout })
-  await page.waitForSelector('.slidev-slide-loading', { state: 'detached', timeout }).catch(() => {})
-  await page.waitForFunction(() => Array.from(document.querySelectorAll('[data-waitfor]')).every((el) => el.querySelector(el.getAttribute('data-waitfor')!)), null, { timeout }).catch(() => {})
-  await page.waitForFunction(() => Array.from(document.querySelectorAll('.mermaid')).every((el) => (el.shadowRoot ?? el).querySelector('svg')), null, { timeout }).catch(() => {})
-  await page.waitForFunction(() => document.fonts.status === 'loaded', null, { timeout }).catch(() => {})
-  await page.waitForLoadState('networkidle')
-  // UnoCSS は dev では後から CSS を注入する。<style> の合計長が 2 回続けて（1 秒）動かないまで待つ
-  let last = -1
-  let stable = 0
-  for (let i = 0; i < 40 && stable < 2; i++) {
-    const len = await page.evaluate(() => Array.from(document.querySelectorAll('style')).reduce((n, s) => n + (s.textContent?.length ?? 0), 0))
-    stable = len === last ? stable + 1 : 0
-    last = len
-    await page.waitForTimeout(500)
+  /** デッキ由来のクラス（Slidev / KaTeX / Shiki / 部品のものを除く）に CSS 規則があるか。候補が無ければ 'none' */
+  const unoState = () =>
+    page.evaluate(() => {
+      const classes = new Set<string>()
+      document.querySelectorAll('[data-slidev-no] [class]').forEach((el) => {
+        for (const c of Array.from(el.classList)) {
+          if (/^(slidev-|ppt-|print-|katex|shiki|line$|mermaid|col-|highlighted|dishonored|my-auto|w-full|h-full|grid$|place-content-center)/.test(c)) continue
+          if (/[-:/[\]]|\d/.test(c)) classes.add(c)
+        }
+      })
+      if (!classes.size) return 'none'
+      const hasRule = (cls: string) => {
+        const needle = '.' + CSS.escape(cls)
+        for (const ss of Array.from(document.styleSheets)) {
+          let rules: CSSRuleList
+          try {
+            rules = ss.cssRules
+          } catch {
+            continue
+          }
+          for (const r of Array.from(rules)) if (r.cssText.includes(needle)) return true
+        }
+        return false
+      }
+      let hit = 0
+      for (const c of classes) if (hasRule(c)) hit++
+      return hit ? 'ok' : 'missing'
+    })
+
+  await waitRendered()
+  let unoReady = true
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const st = await unoState()
+    if (st !== 'missing') break
+    unoReady = false
+    await page.reload({ waitUntil: 'networkidle', timeout })
+    await waitRendered()
+    unoReady = (await unoState()) !== 'missing'
+    if (unoReady) break
   }
   if (extraWait > 0) await page.waitForTimeout(extraWait)
+  return { unoReady }
 }
 
 /** 置き換え画像の撮影、URL 画像と背景画像の取得 */
