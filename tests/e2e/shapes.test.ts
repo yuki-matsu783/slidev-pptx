@@ -1,15 +1,16 @@
 // PowerPoint の図形 187 種（PptShape の type）を並べたデッキ shapes.md。
-// 収集: 全種が shape / line で出て、調整値・反転・矢じりが Capture に入る。書き出し: prstGeom と avLst と xfrm の反転。
+// 収集: 全種が shape / line で出て、調整値・反転・矢じりが Capture に入る。描画: SVG の path と marker が壊れていない。
+// 書き出し: prstGeom と avLst と xfrm の反転、W-SHAPE が出ない。
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { Browser } from 'playwright-chromium'
+import type { Browser, Page } from 'playwright-chromium'
 import { collect } from '../../packages/slidev-addon-pptx/src/collect/index'
 import { exportPptx } from '../../packages/slidev-addon-pptx/src/export'
 import { check } from '../../packages/slidev-addon-pptx/src/opc/check'
 import { PRESET_NAMES } from '../../packages/slidev-addon-pptx/src/shapes/geometry'
-import type { Capture, Element, LineElement, ShapeElement } from '../../packages/slidev-addon-pptx/src/types'
+import type { Capture, Element, LineElement, Report, ShapeElement } from '../../packages/slidev-addon-pptx/src/types'
 import { els, openPptx, shapeNamed } from '../helpers/pptx'
 import type { OpenedPptx } from '../helpers/pptx'
 import { SHAPES, launch, openPrint, startSlidev } from './helpers'
@@ -22,12 +23,13 @@ const SAMPLE = 8
 describe('collect: 図形 187 種', () => {
   let server: Running
   let browser: Browser
+  let page: Page
   let capture: Capture
 
   beforeAll(async () => {
     server = await startSlidev(SHAPES)
     browser = await launch()
-    const page = await openPrint(browser, server.base, { slides: SLIDE_COUNT })
+    page = await openPrint(browser, server.base, { slides: SLIDE_COUNT })
     capture = await page.evaluate(collect)
   }, 120_000)
   afterAll(async () => {
@@ -38,6 +40,12 @@ describe('collect: 図形 187 種', () => {
   const all = (): Element[] => capture.slides.flatMap((s) => s.elements)
   const named = (name: string) => all().find((e) => e.name === name)
   const sample = (name: string) => capture.slides.find((s) => s.no === SAMPLE)!.elements.find((e) => e.name === name) as ShapeElement
+  /** 描画後の部品のルート要素の offset*（回転・拡大の前の px） */
+  const offsetOf = (name: string) =>
+    page.evaluate((n) => {
+      const el = document.querySelector<HTMLElement>(`[data-ppt-name="${n}"]`)!
+      return { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight, minH: parseFloat(getComputedStyle(el).minHeight) || 0 }
+    }, name)
 
   it(`スライドは ${SLIDE_COUNT} 枚`, () => {
     expect(capture.slides).toHaveLength(SLIDE_COUNT)
@@ -61,6 +69,37 @@ describe('collect: 図形 187 種', () => {
       }
     }
     expect(missing).toEqual([])
+  })
+
+  it('描画: 全図形の SVG の path の d が空でなく NaN を含まない。marker の id は重複せず、url(#…) の参照先がある', async () => {
+    const r = await page.evaluate(() => {
+      const bad: string[] = []
+      const svgs = Array.from(document.querySelectorAll('svg.ppt-shape-svg'))
+      for (const svg of svgs) {
+        const name = svg.closest('[data-ppt]')?.getAttribute('data-ppt-name')
+        const paths = Array.from(svg.querySelectorAll('g path'))
+        if (!paths.length) bad.push(`${name}: path が無い`)
+        for (const p of paths) {
+          const d = p.getAttribute('d') ?? ''
+          if (!d.trim()) bad.push(`${name}: d が空`)
+          else if (/NaN|Infinity|undefined/.test(d)) bad.push(`${name}: ${d.slice(0, 60)}`)
+        }
+      }
+      const ids = Array.from(document.querySelectorAll('marker')).map((m) => m.id)
+      const dup = ids.filter((id, i) => ids.indexOf(id) !== i)
+      const refs = Array.from(document.querySelectorAll('[marker-start], [marker-end]')).flatMap((e) => [e.getAttribute('marker-start'), e.getAttribute('marker-end')].filter((v): v is string => !!v))
+      const unresolved = refs.filter((ref) => {
+        const m = /^url\(#(.+)\)$/.exec(ref)
+        return !m || !document.getElementById(m[1])
+      })
+      return { svgs: svgs.length, markers: ids.length, refs: refs.length, bad, dup, unresolved }
+    })
+    expect(r.svgs).toBeGreaterThanOrEqual(186) // 187 種のうち line 以外 + 見本
+    expect(r.bad).toEqual([])
+    expect(r.markers).toBeGreaterThan(0)
+    expect(r.refs).toBeGreaterThan(0)
+    expect(r.dup).toEqual([])
+    expect(r.unresolved).toEqual([])
   })
 
   it('図形の中の文字は段落になり、SVG の中身を拾わない', () => {
@@ -97,30 +136,41 @@ describe('collect: 図形 187 種', () => {
     expect(sample('conn-bent3').arrow).toEqual({ head: 'oval', tail: 'triangle' })
     expect(sample('conn-curved3').arrow).toEqual({ tail: 'arrow' })
     expect(sample('conn-straight1').arrow).toEqual({ head: 'diamond', tail: 'arrow' })
-    expect(sample('arc-half').arrow).toEqual({ tail: 'arrow' })
+    expect(sample('arc-half').arrow).toEqual({ tail: 'stealth' })
     expect(sample('brace').arrow).toBeUndefined()
     expect(sample('conn-bent3').frame.line).toMatchObject({ color: '#7c3aed', width: 2 })
     const line = named('line') as LineElement
     expect(line.line.head).toBeUndefined()
   })
 
-  it('h なしの図形は box の h を実測する（文字の枠は枠全体）', () => {
+  it('h なしの図形は box の h を実測する（中身が 2 行で min-height の 2em より高い）', async () => {
     const e = sample('text-ellipse-auto')
+    const dom = await offsetOf('text-ellipse-auto')
     expect(e.boxSource).toBe('prop')
-    expect(e.box.h).toBeGreaterThan(0)
+    // min-height で決まった高さでは実測の検査にならないので、中身がそれより高いことを先に確かめる
+    expect(dom.h).toBeGreaterThan(dom.minH + 4)
+    expect(Math.abs(e.box.h - dom.h)).toBeLessThanOrEqual(1)
+  })
+
+  it('rotate と実測の幅: box は回転前の枠で、w は描画後の幅と一致する（onMounted の古い値のままにならない）', async () => {
+    const e = sample('rot-wauto')
+    const dom = await offsetOf('rot-wauto')
+    expect(e.rotate).toBe(30)
+    expect(e.box).toMatchObject({ x: 760, y: 440, h: 60 })
+    expect(Math.abs(e.box.w - dom.w)).toBeLessThanOrEqual(0.5)
   })
 })
 
 describe('exportPptx: 図形 187 種', () => {
-  let p: OpenedPptx
+  let report: Report
   let buf: Buffer
   let slideXml: Document[]
 
   beforeAll(async () => {
     const output = join(mkdtempSync(join(tmpdir(), 'slidev-pptx-')), 'shapes.pptx')
-    await exportPptx({ entry: SHAPES, output, lang: 'ja-JP' })
+    report = await exportPptx({ entry: SHAPES, output, lang: 'ja-JP' })
     buf = readFileSync(output)
-    p = await openPptx(buf)
+    const p: OpenedPptx = await openPptx(buf)
     slideXml = []
     for (let i = 1; i <= SLIDE_COUNT; i++) slideXml.push(await p.xml(`ppt/slides/slide${i}.xml`))
   }, 180_000)
@@ -136,6 +186,10 @@ describe('exportPptx: 図形 187 種', () => {
   it('OPC 検査の error が 0', async () => {
     const results = await check(buf)
     expect(results.filter((r) => r.level === 'error')).toEqual([])
+  })
+
+  it('W-SHAPE が 0 件（187 種の名前・見本の調整値・矢じりはどれも PowerPoint にある）', () => {
+    expect(report.warnings.filter((w) => w.code === 'W-SHAPE')).toEqual([])
   })
 
   it('全スライドの <a:prstGeom prst> に 187 種がそろう', () => {

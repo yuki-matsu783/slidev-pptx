@@ -430,13 +430,14 @@ addons:
 
 <PptShape type="bentConnector3" name="conn-bent3" :x="30" :y="200" :w="200" :h="100" :line="{ color: '#7c3aed', width: 2, head: 'oval', tail: 'triangle' }" />
 <PptShape type="curvedConnector3" name="conn-curved3" flipV :x="260" :y="200" :w="200" :h="100" :line="{ color: '#7c3aed', width: 2, tail: 'arrow' }" />
-<PptShape type="straightConnector1" name="conn-straight1" :x="490" :y="200" :w="160" :h="100" :line="{ color: '#7c3aed', width: 2, head: 'diamond', tail: 'arrow' }" />
-<PptShape type="arc" name="arc-half" :adj="{ adj1: 10800000, adj2: 0 }" :x="690" :y="200" :w="120" :h="100" :line="{ color: '#7c3aed', width: 2, tail: 'arrow' }" />
+<PptShape type="straightConnector1" name="conn-straight1" :x="490" :y="200" :w="160" :h="100" :line="{ color: '#7c3aed', width: 1, head: 'diamond', tail: 'arrow' }" />
+<PptShape type="arc" name="arc-half" :adj="{ adj1: 10800000, adj2: 0 }" :x="690" :y="200" :w="120" :h="100" :line="{ color: '#7c3aed', width: 3, tail: 'stealth' }" />
 <PptShape type="leftBrace" name="brace" :x="850" :y="200" :w="40" :h="100" :line="{ color: '#7c3aed', width: 2 }" />
 
-<PptText :x="30" :y="310" :w="920" :size="11" align="left">2 行目: head / tail 付きのコネクタ（折れ線・上下反転の曲線・直線）と円弧（上半分）、中かっこ</PptText>
+<PptText :x="30" :y="310" :w="920" :size="11" align="left">2 行目: 矢じり（折れ線は oval と triangle、上下反転の曲線は arrow、細い直線は diamond と arrow、円弧は stealth）と中かっこ</PptText>
 
 <PptShape type="ellipse" name="text-ellipse" :x="30" :y="350" :w="220" :h="150" fill="#fecaca" line="#b91c1c" :size="14">楕円の文字の枠は内接する矩形。長い文は枠の中で折り返す</PptShape>
 <PptShape type="triangle" name="text-triangle" :x="280" :y="350" :w="220" :h="150" fill="#fecaca" line="#b91c1c" :size="14">三角の文字は下半分</PptShape>
 <PptShape type="wedgeRoundRectCallout" name="text-callout" :x="530" :y="350" :w="180" :h="110" fill="#fecaca" line="#b91c1c" :size="14" valign="top">吹き出し（上寄せ）</PptShape>
-<PptShape type="ellipse" name="text-ellipse-auto" :x="750" :y="360" :w="200" fill="#fecaca" line="#b91c1c" :size="14">h なしは枠全体</PptShape>
+<PptShape type="ellipse" name="text-ellipse-auto" :x="740" :y="350" :w="220" fill="#fecaca" line="#b91c1c" :size="14">h なしは枠全体<br>高さは中身の 2 行で決まる</PptShape>
+<PptShape type="hexagon" name="rot-wauto" :x="760" :y="440" :h="60" :rotate="30" fill="#fecaca" line="#b91c1c" :size="14">回転と実測の幅</PptShape>
