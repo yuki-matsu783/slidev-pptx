@@ -1,0 +1,31 @@
+#!/bin/sh
+# ccnavi の入口。OS を見て、その OS 向けに組んだ実行ファイルへ渡す。
+#
+#   Windows (Git Bash)  .ccnavi/ccnavi.exe
+#   macOS               .ccnavi/darwin/ccnavi
+#   Linux (WSL / web)   .ccnavi/linux/ccnavi
+#
+# PyInstaller はクロスビルドできず、同梱物（_internal/）の名前も OS 間でぶつかるので、
+# OS ごとに置き場を分けている。組むときは、その OS の機械で ccnavi のリポジトリの
+# `uv run --with pyinstaller python build.py` を回し、dist/ccnavi/ の中身をそのまま置く。
+
+set -eu
+
+here=$(cd "$(dirname "$0")" && pwd)
+
+case "$(uname -s)" in
+Darwin) bin="$here/darwin/ccnavi" ;;
+Linux) bin="$here/linux/ccnavi" ;;
+MINGW* | MSYS* | CYGWIN*) bin="$here/ccnavi.exe" ;;
+*)
+	printf 'ccnavi: この OS (%s) 向けの実行ファイルがありません。\n' "$(uname -s)" >&2
+	exit 1
+	;;
+esac
+
+if [ ! -x "$bin" ]; then
+	printf 'ccnavi: 実行ファイルがありません (%s)。その OS の機械で build.py を回し、dist/ccnavi/ の中身を置いてください。\n' "$bin" >&2
+	exit 1
+fi
+
+exec "$bin" "$@"
