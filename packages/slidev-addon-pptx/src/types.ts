@@ -106,8 +106,11 @@ export interface ShapeElement extends ElementBase {
   rotate?: number
   paragraphs?: Paragraph[]
   valign?: 'top' | 'middle' | 'bottom'
-  /** 調整値。キーは定義の avLst の名前（`adj` `adj1` …）、値は ECMA の単位（例 50000） */
-  adj?: Record<string, number>
+  /**
+   * 調整値。キーは定義の avLst の名前（`adj` `adj1` …）、値は ECMA の単位（例 50000）。
+   * data-ppt-opts の JSON の値のまま（数でない値も入る）。捨てて W-SHAPE を出すのは変換の normalizeAdjust
+   */
+  adj?: Record<string, unknown>
   flipH?: boolean
   flipV?: boolean
   /** 開いた path の始点（head）・終点（tail）の矢じり。値は LineElement の head / tail と同じ */

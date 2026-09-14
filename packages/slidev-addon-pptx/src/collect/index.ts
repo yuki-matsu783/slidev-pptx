@@ -605,11 +605,10 @@ export function collect(): Capture {
           paragraphs: paragraphs.length ? paragraphs : undefined,
           valign: (opts.valign as TextElement['valign']) ?? 'middle',
         }
-        // 調整値は数値のものだけ。定義に無い名前の扱いは Node（変換）が決める
-        if (opts.adj && typeof opts.adj === 'object' && !Array.isArray(opts.adj)) {
-          const adj: Record<string, number> = {}
-          for (const [k, v] of Object.entries(opts.adj as Record<string, unknown>)) if (typeof v === 'number' && Number.isFinite(v)) adj[k] = v
-          if (Object.keys(adj).length) s.adj = adj
+        // 調整値は data-ppt-opts の JSON の値のまま渡す。数でない値・定義に無い名前・範囲外を捨てて W-SHAPE を出すのは
+        // Node（変換の normalizeAdjust）。ここで捨てると警告が出ない
+        if (opts.adj && typeof opts.adj === 'object' && !Array.isArray(opts.adj) && Object.keys(opts.adj).length) {
+          s.adj = { ...(opts.adj as Record<string, unknown>) }
         }
         if (opts.flipH === true) s.flipH = true
         if (opts.flipV === true) s.flipV = true

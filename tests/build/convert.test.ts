@@ -333,6 +333,18 @@ describe('convert: 合成の Capture（範囲指定・調整値の範囲）', ()
     expect(c.report.warnings.filter((w) => w.code === 'W-SHAPE').map((w) => w.elementId)).toEqual(['s1-e2', 's1-e4', 's1-e5'])
   })
 
+  it('数でない adj（文字列・真偽値・null）も捨てて、図形 1 つに W-SHAPE 1 件（範囲外と同じ文面）。残りの数は使う', async () => {
+    const { ctx: c } = await run([slideOf(1, [
+      shape('s1-e1', { shape: 'star5', adj: { adj: '10000', hf: 50000, vf: true, adj2: null } }),
+      shape('s1-e2', { shape: 'foo', adj: { adj: 'x' } }),
+    ])], 1)
+    expect(c.adjust[1]).toEqual({ 'Shape 1': { hf: 50000 } })
+    expect(c.report.warnings.filter((w) => w.code === 'W-SHAPE').map((w) => [w.elementId, w.message])).toEqual([
+      ['s1-e1', '図形 "star5" の調整値 adj, vf, adj2 は定義に無いか、数でないか、範囲外なので捨てた'],
+      ['s1-e2', '図形 "foo" は PowerPoint の図形に無いので rect にした（調整値も捨てた）'],
+    ])
+  })
+
   it('roundRect の radius の換算は定義の pin（0〜50000）に収める', async () => {
     const { ctx: c } = await run([slideOf(1, [
       shape('s1-e1', { frame: { radius: 30, inset: [0, 0, 0, 0] } }),

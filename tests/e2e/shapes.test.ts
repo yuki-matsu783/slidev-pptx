@@ -195,14 +195,14 @@ describe('collect: 図形 187 種', () => {
     for (const c of ['W-PPT-CONTENT', 'W-INLINE', 'W-NESTED-PPT', 'W-CSS', 'W-HIDDEN', 'W-RENDER']) expect(codes.filter((x) => x === c), c).toEqual([])
   })
 
-  it('adj は数値のまま Capture に入る（丸めや範囲の判断は Node の変換がする）。数でない値は入れない', () => {
+  it('adj は data-ppt-opts の値のまま Capture に入る（丸め・範囲・数でない値の判断は Node の変換がする）', () => {
     expect(sample('adj-roundRect').adj).toEqual({ adj: 50000 })
     expect(sample('adj-rightArrow').adj).toEqual({ adj1: 80000, adj2: 25000 })
     expect(sample('arc-half').adj).toEqual({ adj1: 10800000, adj2: 0 })
     expect(sample('text-ellipse').adj).toBeUndefined()
     expect(onSlide(EDGE, 'edge-big').adj).toEqual({ adj1: 3000000000 })
     expect(onSlide(EDGE, 'edge-frac').adj).toEqual({ adj1: 0.4, adj2: 80000.6 })
-    expect(onSlide(EDGE, 'edge-str').adj).toEqual({ hf: 50000 })
+    expect(onSlide(EDGE, 'edge-str').adj).toEqual({ adj: '10000', hf: 50000 })
   })
 
   it('flipH / flipV は true のときだけ入る', () => {
@@ -343,7 +343,9 @@ describe('exportPptx: 図形 187 種', () => {
   it('W-SHAPE: 格子と見本（1〜8 枚目）は 0 件。境界の入力（9 枚目）は捨てた調整値・知らない矢じり・知らない図形の分だけ 1 件ずつ', () => {
     const ws = report.warnings.filter((w) => w.code === 'W-SHAPE')
     expect(ws.filter((w) => w.slide !== EDGE)).toEqual([])
-    expect(ws.map((w) => w.name).sort()).toEqual(['edge-big', 'edge-bogus', 'edge-huge', 'edge-line-bogus', 'edge-rr-big', 'edge-unknown'])
+    expect(ws.map((w) => w.name).sort()).toEqual(['edge-big', 'edge-bogus', 'edge-huge', 'edge-line-bogus', 'edge-rr-big', 'edge-str', 'edge-unknown'])
+    // 数でない値も、範囲外と同じ変換の文面で出る
+    expect(ws.find((w) => w.name === 'edge-str')?.message).toBe('図形 "star5" の調整値 adj は定義に無いか、数でないか、範囲外なので捨てた')
   })
 
   it('全スライドの <a:prstGeom prst> に 187 種がそろう', () => {
