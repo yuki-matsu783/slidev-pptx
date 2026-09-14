@@ -1,7 +1,7 @@
 # repair-bisect
 
 Windows の PowerPoint で `samples/shapes.pptx` を開くと「修復」を求められる。原因を実機で絞るための PPTX 一式です。
-どのファイルも、`00-full.pptx` から要因を 1 つだけ変えています（17・18 は別のデッキの比較用）。
+どのファイルも、`00-full.pptx` から要因を 1 つだけ変えています（17・18 は別のデッキの比較用。32 は 19 から、36 は 31 から 1 つだけ変えています）。
 
 ## 開き方
 
@@ -35,8 +35,8 @@ check は `packages/slidev-addon-pptx/src/opc/check.ts` の結果です（error 
 | `14-no-connectors.pptx` | コネクタ 9 種（bentConnector2〜5、curvedConnector2〜5、straightConnector1）と lineInv の図形、線（prst="line"）の要素を取り除く | 0 | 51 KB |
 | `15-no-shape-text.pptx` | 図形の中の文字を全部外す（全図形が文字なしの図形として出る）。図形の下の名前の文字枠は残す | 0 | 50 KB |
 | `16-no-new-prst.pptx` | 以前の 11 種（rect roundRect ellipse line rightArrow leftArrow upArrow downArrow diamond triangle hexagon）以外の図形を取り除く。知らない図形 "foo" は rect で出るので残る | 0 | 47 KB |
-| `17-plain.pptx` | `tests/fixtures/deck/plain.md` の書き出し（図形なしの比較用） | 0 | 79 KB |
-| `18-components.pptx` | `tests/fixtures/deck/components.md` の書き出し | 0 | 33 KB |
+| `17-plain.pptx` | `tests/fixtures/deck/plain.md` の書き出し（図形なしの比較用）。新しい prst・調整値の後処理・図形の反転・図形の矢じりの経路を通らない。以前開けたときと同じ経路だけを使う比較用 | 0 | 79 KB |
+| `18-components.pptx` | `tests/fixtures/deck/components.md` の書き出し。新しい prst・調整値の後処理・図形の反転・図形の矢じりの経路を通らない。以前開けたときと同じ経路だけを使う比較用 | 0 | 33 KB |
 | `19-only-connectors.pptx` | コネクタ 9 種と line・lineInv だけを 1 枚に並べる（文字・調整値・矢じり・反転なし） | 0 | 19 KB |
 | `20-single-foldedCorner.pptx` | foldedCorner を 1 つだけ置いた 1 枚（文字・調整値なし） | 0 | 19 KB |
 | `20-single-bentConnector3.pptx` | bentConnector3 を 1 つだけ置いた 1 枚（文字・調整値・矢じりなし） | 0 | 19 KB |
@@ -46,6 +46,10 @@ check は `packages/slidev-addon-pptx/src/opc/check.ts` の結果です（error 
 | `30-cxnsp.pptx` | 00 のうち、prst がコネクタ 9 種・line・lineInv の `<p:sp>` 16 個を `<p:cxnSp>` に書き換える（`p:nvSpPr` → `p:nvCxnSpPr`、`p:cNvSpPr` → `p:cNvCxnSpPr`）。id・name・xfrm（反転）・ln（矢じり）・avLst・塗りはそのまま。txBody を持つものは無かった | 0 | 51 KB |
 | `31-cxnsp-no-fill.pptx` | 30 から、その 16 個の `<p:spPr>` の直下の塗り（solidFill 14 個、noFill 2 個）を外す。PowerPoint が自分で書くコネクタと同じく、塗りの要素が無い形 | 0 | 51 KB |
 | `32-only-connectors-cxnsp.pptx` | 19 の 11 個を、30 と同じ規則で `<p:cxnSp>` にする（塗りはそのまま） | 0 | 19 KB |
+| `33-sp-no-fill.pptx` | 00 のうち、同じ 16 個を `<p:sp>` のまま、`<p:spPr>` の直下の塗り（solidFill 14 個、noFill 2 個）だけを外す。スライドの中身は、31 の要素名を `<p:sp>` に戻したものと同じ | 0 | 51 KB |
+| `34-cxnsp-connectors-only.pptx` | 00 のうち、コネクタ 9 種の 13 個だけを 30 と同じ規則で `<p:cxnSp>` にする（塗りは残す）。line 2 個・lineInv 1 個は `<p:sp>` のまま | 0 | 51 KB |
+| `35-cxnsp-lines-only.pptx` | 00 のうち、line 2 個・lineInv 1 個だけを 30 と同じ規則で `<p:cxnSp>` にする（塗りは残す）。コネクタ 9 種の 13 個は `<p:sp>` のまま | 0 | 51 KB |
+| `36-cxnsp-no-fill-style.pptx` | 31 の 16 個の `<p:cxnSp>` に、PowerPoint が書くコネクタと同じ形の `<p:style>` を `<p:spPr>` の直後に 1 つずつ足す（下の「36 の `<p:style>`」） | 0 | 52 KB |
 
 ### 30〜32 の読み方
 
@@ -56,8 +60,56 @@ check は `packages/slidev-addon-pptx/src/opc/check.ts` の結果です（error 
 - 30 でも出て、31 で出なければ: `<p:cxnSp>` に塗りを持たせていることが原因（XSD では許されるが、PowerPoint は書かない形）
 - 30 と 31 の両方で出れば: この仮説は外れか、別の原因も残っている。14-no-connectors の結果と合わせて見る
 - 19 で出て、32 で出なければ: コネクタだけの 1 枚でも同じ結論。19 で出ないなら、32 は判断の材料にならない
+- 19 と 32 の両方で出れば: 30・31 の両方で出たときと同じく、この仮説は外れか、別の原因も残っている
+
+### 33〜36 の読み方
+
+33〜36 も、00（36 は 31）から 1 つだけ変えています。図形の数・id・名前・座標・反転・prst は基準と同じで、XSD の検証結果も 00 と同じです。
+どれも、00 で修復が出ることが前提です。00 で出なければ、30〜36 は判断の材料になりません。
+
+**30・31・33 と 00 の 2×2**（対象は 30 と同じ 16 個）
+
+| | 塗りあり | 塗りなし |
+|---|---|---|
+| `<p:sp>` | 00 | 33 |
+| `<p:cxnSp>` | 30 | 31 |
+
+- 33 で出なければ: `<p:sp>` のままでも、塗りを外すと出なくなる。塗りが関わっている
+- 30 で出なければ: 塗りを残したままでも、要素名を変えると出なくなる。要素名が関わっている
+- 30 と 33 の両方で出て、31 で出なければ: 片方だけ変えても足りず、要素名と塗りの両方を変えると出なくなる
+- 4 つとも出れば: 要素名と塗りのほかに原因がある（30〜32 の読み方の「両方で出れば」と同じ）
+
+**34・35: コネクタと線を分けたもの**（30 で出なかったときに見る。30 で出たなら判断の材料にならない）
+
+- 34 で出ず、35 で出れば: `<p:sp>` のままのコネクタ 9 種が関わっている
+- 35 で出ず、34 で出れば: `<p:sp>` のままの line・lineInv が関わっている
+- 34・35 の両方で出なければ: どちらか片方を `<p:cxnSp>` にするだけで出なくなる。これだけでは、どちらが原因かは決まらない
+- 34・35 の両方で出れば: コネクタと線の両方を `<p:cxnSp>` にしないと出なくなる
+
+**36: 30 と 31 の両方で出たときに試すもの**
+
+- 31 で出て、36 で出なければ: `<p:cxnSp>` に `<p:style>` が無いことが関わっている
+- 36 でも出れば: `<p:style>` の有無でもない。要素名・塗り・`<p:style>` のほかに原因がある
+
+#### 36 の `<p:style>`
+
+ECMA-376 の cxnSp の例（PowerPoint が書いたコネクタ）の値に合わせています。
+
+```xml
+<p:style>
+  <a:lnRef idx="1"><a:schemeClr val="accent1"/></a:lnRef>
+  <a:fillRef idx="0"><a:schemeClr val="accent1"/></a:fillRef>
+  <a:effectRef idx="0"><a:schemeClr val="accent1"/></a:effectRef>
+  <a:fontRef idx="minor"><a:schemeClr val="tx1"/></a:fontRef>
+</p:style>
+```
+
+python-pptx の解析文書（shp-connector）に載っている PowerPoint の出力例は、`lnRef idx="2"`・`effectRef idx="1"` で、この 2 つの値が違います。
+線の太さ・色・矢じりは、31 と同じく `<p:spPr>` の `<a:ln>` に書いてあります。
 
 ## 結果（ここに書き込んでください）
+
+まず 00・01〜07・14・19・30・31・33 を試してください。残りは、その結果を見てからで足ります。
 
 | ファイル | 修復が出たか | 修復後に消えた・変わった図形があればメモ |
 |---|---|---|
@@ -71,7 +123,7 @@ check は `packages/slidev-addon-pptx/src/opc/check.ts` の結果です（error 
 | `07-slide7.pptx` |  |  |
 | `08-slide8.pptx` |  |  |
 | `09-slide9.pptx` |  |  |
-| `10-no-patches.pptx` |  |  |
+| `10-no-patches.pptx`（注意: PptxGenJS の生の出力で、図形と関係ない check error が 9 件ある。修復が出ても図形のせいとは限らない。10b と見比べる） |  |  |
 | `10b-min-patches.pptx` |  |  |
 | `11-no-adjust.pptx` |  |  |
 | `12-no-flip.pptx` |  |  |
@@ -90,6 +142,10 @@ check は `packages/slidev-addon-pptx/src/opc/check.ts` の結果です（error 
 | `30-cxnsp.pptx` |  |  |
 | `31-cxnsp-no-fill.pptx` |  |  |
 | `32-only-connectors-cxnsp.pptx` |  |  |
+| `33-sp-no-fill.pptx` |  |  |
+| `34-cxnsp-connectors-only.pptx` |  |  |
+| `35-cxnsp-lines-only.pptx` |  |  |
+| `36-cxnsp-no-fill-style.pptx` |  |  |
 
 ## お願い: 修復後の PPTX
 
@@ -101,3 +157,4 @@ check は `packages/slidev-addon-pptx/src/opc/check.ts` の結果です（error 
 製品のコード（`packages/`・`tests/`）は変えていません。書き出しと同じ部品（`collect` → `build` → `postProcess(PATCHES)` → `check`）を
 使い捨てのスクリプトから直接呼び、Capture（収集結果）の段階か、`build` と `postProcess` の間で 1 つの要因だけを変えて作りました。
 `01`〜`09` は Capture のスライドを絞ったもので、`--range` と同じ結果です（PPTX の中の番号は 1 から振り直し）。
+`30`〜`36` は、`postProcess` に渡す PATCHES の最後に、スライドの XML の書き換えを 1 つ足して作りました。
