@@ -10,6 +10,8 @@ export const DECK_DIR = resolve(here, '../fixtures/deck')
 export const PLAIN = resolve(DECK_DIR, 'plain.md')
 export const COMPONENTS = resolve(DECK_DIR, 'components.md')
 export const DARK = resolve(DECK_DIR, 'dark.md')
+/** PowerPoint の図形 187 種を並べたデッキ（格子 7 枚 + 見本 1 枚 + 境界の入力 1 枚） */
+export const SHAPES = resolve(DECK_DIR, 'shapes.md')
 
 export interface Running {
   port: number

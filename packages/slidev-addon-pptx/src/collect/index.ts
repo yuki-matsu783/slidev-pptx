@@ -1,7 +1,7 @@
 // ブラウザで動く収集器（ppt-components.md §2、§3）。Vue にも Node にも依存しない。
 // Playwright は関数を文字列化して page.evaluate に渡すので、collect はモジュール先頭の定数やヘルパを参照できない。
 // すべて関数の中に閉じる。単位は Slidev キャンバス px、色は #rrggbb、透明度は 0–100。判断（レイアウト・対応表）はしない。
-import type { Box, Capture, Cell, Dash, Element, FrameStyle, ImageElement, Paragraph, Run, SlideCapture, TextElement, Warning } from '../types.ts'
+import type { Box, Capture, Cell, Dash, Element, FrameStyle, ImageElement, Paragraph, Run, ShapeElement, SlideCapture, TextElement, Warning } from '../types.ts'
 
 export function collect(): Capture {
   // ---------------------------------------------------------------- 道具
@@ -599,12 +599,27 @@ export function collect(): Capture {
         }
         if (!frame.fill && opts.fill !== 'none') frame.fill = { color: '#ffffff' }
         const paragraphs = withWarnId(id, inner)
-        elements.push({
+        const s: ShapeElement = {
           id, name, source: 'ppt', kind: 'shape', shape, box, boxSource, frame,
           rotate: typeof opts.rotate === 'number' ? opts.rotate : undefined,
           paragraphs: paragraphs.length ? paragraphs : undefined,
           valign: (opts.valign as TextElement['valign']) ?? 'middle',
-        })
+        }
+        // 調整値は data-ppt-opts の JSON の値のまま渡す。数でない値・定義に無い名前・範囲外を捨てて W-SHAPE を出すのは
+        // Node（変換の normalizeAdjust）。ここで捨てると警告が出ない
+        if (opts.adj && typeof opts.adj === 'object' && !Array.isArray(opts.adj) && Object.keys(opts.adj).length) {
+          s.adj = { ...(opts.adj as Record<string, unknown>) }
+        }
+        if (opts.flipH === true) s.flipH = true
+        if (opts.flipV === true) s.flipV = true
+        // 開いた path の矢じり（コネクタ・円弧など）。none は付けない
+        if (typeof lineOpts === 'object' && lineOpts) {
+          const arrow: NonNullable<ShapeElement['arrow']> = {}
+          if (lineOpts.head && lineOpts.head !== 'none') arrow.head = lineOpts.head
+          if (lineOpts.tail && lineOpts.tail !== 'none') arrow.tail = lineOpts.tail
+          if (arrow.head || arrow.tail) s.arrow = arrow
+        }
+        elements.push(s)
         return
       }
       if (type === 'image') {

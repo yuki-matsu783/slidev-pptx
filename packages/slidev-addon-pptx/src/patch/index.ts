@@ -6,6 +6,7 @@ import { renameShapes } from './patches/renameShapes.ts'
 import { dropEmptyPlaceholders } from './patches/dropEmptyPlaceholders.ts'
 import { dedupeParagraphProps } from './patches/dedupeParagraphProps.ts'
 import { applyAutofitScale } from './patches/applyAutofitScale.ts'
+import { applyShapeAdjust } from './patches/applyShapeAdjust.ts'
 import { splitNotesParagraphs } from './patches/splitNotesParagraphs.ts'
 import { replaceMaster } from './patches/replaceMaster.ts'
 import { rebuildContentTypes } from './patches/rebuildContentTypes.ts'
@@ -23,6 +24,8 @@ export interface PatchContext {
   shapeNames: Record<number, string[]>
   /** スライド番号 → 図形名 → 縮小率（§3.3） */
   autofit: Record<number, Record<string, AutofitScale>>
+  /** スライド番号 → 図形名 → 図形の調整値（avLst の名前 → ECMA の単位の整数） */
+  adjust: Record<number, Record<string, Record<string, number>>>
   report: Report
 }
 
@@ -51,6 +54,7 @@ export const PATCHES: Patch[] = [
   dropEmptyPlaceholders,
   dedupeParagraphProps,
   applyAutofitScale,
+  applyShapeAdjust,
   splitNotesParagraphs,
   replaceMaster,
   rebuildContentTypes,

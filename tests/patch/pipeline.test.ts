@@ -9,12 +9,13 @@ import { openPptx, readFixturePptx } from '../helpers/pptx'
 import { contextFor } from './helpers'
 
 describe('patch/index: 列の定義', () => {
-  it('順番は 1〜7 で固定', () => {
+  it('順番は固定（applyShapeAdjust は applyAutofitScale の直後）', () => {
     expect(PATCHES.map((p) => p.name)).toEqual([
       'renameShapes',
       'dropEmptyPlaceholders',
       'dedupeParagraphProps',
       'applyAutofitScale',
+      'applyShapeAdjust',
       'splitNotesParagraphs',
       'replaceMaster',
       'rebuildContentTypes',

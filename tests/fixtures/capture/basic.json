@@ -180,6 +180,45 @@
           "box": { "x": 56, "y": 236, "w": 868, "h": 80 }, "boxSource": "measured",
           "valign": "top", "fit": { "contentHeight": 80, "boxHeight": 80 }, "frame": { "inset": [0, 0, 0, 0] },
           "paragraphs": [ { "kind": "heading", "level": 1, "align": "center", "lineHeight": 80, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "章", "size": 60, "color": "#ffffff", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ]
+        },
+        {
+          "id": "s4-e2", "name": "", "source": "ppt", "kind": "shape", "shape": "bentConnector3",
+          "box": { "x": 60, "y": 400, "w": 160, "h": 80 }, "boxSource": "prop",
+          "frame": { "line": { "color": "#ffffff", "width": 2, "dash": "solid" }, "inset": [0, 0, 0, 0] },
+          "adj": { "adj1": 25000.4, "foo": 1 },
+          "arrow": { "head": "triangle", "tail": "bogus" }
+        },
+        {
+          "id": "s4-e3", "name": "", "source": "ppt", "kind": "shape", "shape": "foldedCorner",
+          "box": { "x": 260, "y": 400, "w": 160, "h": 80 }, "boxSource": "prop",
+          "frame": { "fill": { "color": "#fef3c7" }, "inset": [0, 0, 0, 0] },
+          "flipH": true, "flipV": true,
+          "adj": { "adj": 3000000000 },
+          "paragraphs": [ { "kind": "plain", "level": 0, "align": "center", "lineHeight": 20, "spaceBefore": 0, "spaceAfter": 0, "runs": [ { "text": "メモ", "size": 14, "color": "#333333", "bold": false, "italic": false, "underline": false, "strike": false, "code": false } ] } ],
+          "valign": "middle"
+        },
+        {
+          "id": "s4-e4", "name": "", "source": "ppt", "kind": "shape", "shape": "notAShape",
+          "box": { "x": 460, "y": 400, "w": 160, "h": 80 }, "boxSource": "prop",
+          "frame": { "fill": { "color": "#cccccc" }, "inset": [0, 0, 0, 0] },
+          "adj": { "adj": 1 }
+        },
+        {
+          "id": "s4-e5", "name": "", "source": "ppt", "kind": "shape", "shape": "roundRect",
+          "box": { "x": 660, "y": 400, "w": 160, "h": 80 }, "boxSource": "prop",
+          "frame": { "fill": { "color": "#eeeeff" }, "radius": 8, "inset": [0, 0, 0, 0] },
+          "adj": { "adj": 30000 },
+          "flipV": true
+        },
+        {
+          "id": "s4-e6", "name": "", "source": "ppt", "kind": "shape", "shape": "roundRect",
+          "box": { "x": 660, "y": 290, "w": 160, "h": 80 }, "boxSource": "prop",
+          "frame": { "fill": { "color": "#eeeeff" }, "radius": 0, "inset": [0, 0, 0, 0] }
+        },
+        {
+          "id": "s4-e7", "name": "", "source": "ppt", "kind": "shape", "shape": "roundRect",
+          "box": { "x": -40, "y": 290, "w": 100, "h": 80 }, "boxSource": "prop",
+          "frame": { "fill": { "color": "#eeeeff" }, "radius": 10, "inset": [0, 0, 0, 0] }
         }
       ],
       "warnings": []

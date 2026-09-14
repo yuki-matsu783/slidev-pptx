@@ -21,6 +21,7 @@ export function contextFor(overrides: Partial<PatchContext> = {}): PatchContext 
       2: ['Text 1', 'Line 2'],
     },
     autofit: {},
+    adjust: {},
     report: emptyReport(),
     ...overrides,
   }

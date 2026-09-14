@@ -1,11 +1,28 @@
+<script lang="ts">
+/** 警告は同じ内容につきページ全体で 1 回だけ出す（/print は全スライドの部品を同時に描き、大きさが変わるたびに評価し直す） */
+const warned = new Set<string>()
+function warnOnce(key: string, ...args: unknown[]): void {
+  if (warned.has(key)) return
+  warned.add(key)
+  console.warn(...args)
+}
+</script>
+
 <script setup lang="ts">
 // PPT 部品: 図形（wip/design/ppt-components.md §1.3）。
-// rect / roundRect は div の CSS で、それ以外は inline SVG で描く（形は PowerPoint の preset の近似）。文字は上に重ねる。
+// line 以外は PowerPoint の図形の定義（src/shapes）を枠の実寸 px で評価し、inline SVG で描く。文字は上に重ねる。
+// 文字の枠: w と h の両方を props で決めたときだけ定義の rect に置く。どちらかが内容で決まるときは枠全体（padding だけ）。
+// 文字の枠は大きさから決まるので、大きさを内容から測ると、測る → 枠が変わる → 大きさが変わる、と循環するため。
 // type="line" は対角線。矢じりの marker は部品ごとに一意な id を持つ（/print は全スライドを同時に描く）。
-import { computed, onMounted, ref, useId } from 'vue'
+// 形は定義どおりに描くだけで、見た目の補正はしない。たとえば cloudCallout は、調整値で泡（吹き出しの先）を雲の近くに置くと
+// 泡が雲に重なる（adj1: -30000 と太い線で目立つ）。直していない
+import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue'
+import { evalPreset, isPreset } from '../src/shapes/geometry.ts'
+import { normalizeAdjust, radiusToAdj } from '../src/shapes/adjust.ts'
+import type { PresetFill, PresetGeometry } from '../src/shapes/geometry.ts'
 
 type Dash = 'solid' | 'dash' | 'dot'
-type Arrow = 'none' | 'arrow' | 'triangle' | 'oval' | 'diamond'
+type Arrow = 'none' | 'arrow' | 'stealth' | 'triangle' | 'oval' | 'diamond'
 interface LineProps {
   color?: string
   width?: number
@@ -13,7 +30,6 @@ interface LineProps {
   head?: Arrow
   tail?: Arrow
 }
-type ShapeType = 'rect' | 'roundRect' | 'ellipse' | 'line' | 'rightArrow' | 'leftArrow' | 'upArrow' | 'downArrow' | 'diamond' | 'triangle' | 'hexagon'
 
 const props = withDefaults(
   defineProps<{
@@ -23,7 +39,14 @@ const props = withDefaults(
     h?: number
     export?: 'native' | 'image'
     name?: string
-    type?: ShapeType
+    /** PowerPoint の図形の名前（ECMA-376 の prst 名。187 種）。未知の名前は rect で描く */
+    type?: string
+    /** 調整値。キーは定義の avLst の名前（`adj` `adj1` …）、値は ECMA の単位（例 50000） */
+    adj?: Record<string, number>
+    /** 左右反転（文字は反転しない） */
+    flipH?: boolean
+    /** 上下反転（文字は 180 度回る） */
+    flipV?: boolean
     fill?: string
     line?: string | LineProps
     radius?: number
@@ -35,19 +58,42 @@ const props = withDefaults(
     size?: number
     color?: string
   }>(),
-  { export: 'native', name: '', type: 'rect', fill: '#ffffff', line: '#000000', radius: 8, rotate: 0, padding: () => [0, 8, 0, 8], align: 'center', valign: 'middle' },
+  { export: 'native', name: '', type: 'rect', flipH: false, flipV: false, fill: '#ffffff', line: '#000000', radius: 8, rotate: 0, padding: () => [0, 8, 0, 8], align: 'center', valign: 'middle' },
 )
 
 const uid = useId()
 const root = ref<HTMLElement | null>(null)
 // rotate のときは回転前の枠（offset*）を測って data-ppt-box に載せる（回転後の外接矩形を使わない）
 const measured = ref<Record<string, number>>({})
-onMounted(() => {
-  if (props.rotate && root.value) {
-    const el = root.value
-    measured.value = { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }
+// SVG の実寸。w h が props に無い辺は ResizeObserver で測る（offset* は回転・拡大の前の px）
+const size = ref({ w: 0, h: 0 })
+let observer: ResizeObserver | undefined
+const measure = () => {
+  const el = root.value
+  if (!el) return
+  const w = el.offsetWidth
+  const h = el.offsetHeight
+  if (size.value.w !== w || size.value.h !== h) size.value = { w, h }
+  // 回転前の枠は大きさが変わるたびに測り直す（幅や高さが内容で決まると、フォントの読み込みなどで onMounted の後にも変わる）。
+  // 大きさの変わらない位置だけの移動は ResizeObserver が知らせないので追わない
+  if (props.rotate) {
+    const m = measured.value
+    const x = el.offsetLeft
+    const y = el.offsetTop
+    if (m.x !== x || m.y !== y || m.w !== w || m.h !== h) measured.value = { x, y, w, h }
   }
+}
+onMounted(() => {
+  const el = root.value
+  if (!el) return
+  measure()
+  if (props.rotate || (props.type !== 'line' && (props.w === undefined || props.h === undefined))) {
+    observer = new ResizeObserver(measure)
+    observer.observe(el)
+  }
+  if (!isPreset(props.type)) warnOnce(`type:${props.type}`, `[PptShape] 未知の type "${props.type}" は rect で描く`)
 })
+onBeforeUnmount(() => observer?.disconnect())
 
 const box = computed(() => {
   const b: Record<string, number> = { ...measured.value }
@@ -62,64 +108,125 @@ const lineProps = computed<LineProps | undefined>(() => {
   if (!props.line || props.line === 'none') return undefined
   return typeof props.line === 'string' ? { color: props.line, width: 1 } : { width: 1, ...props.line }
 })
+const lineColor = computed(() => lineProps.value?.color ?? '#000000')
+const lineWidth = computed(() => lineProps.value?.width ?? 1)
 const fillColor = computed(() => (props.fill && props.fill !== 'none' ? props.fill : 'none'))
-const isCssShape = computed(() => props.type === 'rect' || props.type === 'roundRect')
 const dashArray = computed(() => {
   const d = lineProps.value?.dash
-  const w = lineProps.value?.width ?? 1
+  const w = lineWidth.value
   return d === 'dash' ? `${w * 4} ${w * 2}` : d === 'dot' ? `${w} ${w}` : undefined
 })
 const paddingCss = computed(() => (Array.isArray(props.padding) ? props.padding.map((v) => `${v}px`).join(' ') : `${props.padding}px`))
 
+const isLine = computed(() => props.type === 'line')
+const W = computed(() => props.w ?? size.value.w)
+const H = computed(() => props.h ?? size.value.h)
+
+const geometry = computed((): PresetGeometry => {
+  const w = Number.isFinite(W.value) ? W.value : 0
+  const h = Number.isFinite(H.value) ? H.value : 0
+  // 調整値は変換（convert.ts の shapeAdjust）と同じ normalizeAdjust を通す（定義に無い名前・数でない値・範囲外を捨て、整数に丸める）。
+  // PPTX に書かれる値で形を作り、Slidev と PowerPoint の形を揃えるため
+  const { adj } = normalizeAdjust(props.type, props.adj)
+  // roundRect の radius（px）は adj に換算する。adj.adj が残ったときはそちらが勝つ（変換と同じ）
+  if (props.type === 'roundRect' && adj.adj === undefined) {
+    const r = radiusToAdj(props.radius, w, h)
+    if (r !== undefined) adj.adj = r
+  }
+  // 未知の名前や評価の失敗で部品ごと落とさず、rect で描く
+  try {
+    if (isPreset(props.type)) return evalPreset(props.type, w, h, adj)
+  } catch (e) {
+    warnOnce(`eval:${props.type}`, `[PptShape] type "${props.type}" を評価できないので rect で描く`, e)
+  }
+  return evalPreset('rect', w, h)
+})
+
+/** path の fill の陰影: 塗りの上に黒か白を重ねる */
+const SHADE: Partial<Record<PresetFill, { color: string; opacity: number }>> = {
+  darken: { color: '#000000', opacity: 0.4 },
+  darkenLess: { color: '#000000', opacity: 0.2 },
+  lighten: { color: '#ffffff', opacity: 0.4 },
+  lightenLess: { color: '#ffffff', opacity: 0.2 },
+}
+
+// ---------------------------------------------------------------- 矢じり
+// 形: arrow は開いた V 字（線だけ）、stealth は後ろが切り欠きの塗り、triangle は塗った三角、oval は円、diamond は菱形。
+// 未知の値は arrow（変換が PowerPoint に arrow として書くのと揃える）。
+// 大きさは PowerPoint の既定（med: 幅・長さとも線幅のおよそ 3 倍）の近似。細い線でも見えるよう下限を設ける
+const MARKER_KINDS = ['arrow', 'stealth', 'triangle', 'oval', 'diamond'] as const
+type MarkerKind = (typeof MARKER_KINDS)[number]
+const ARROW_SCALE = 3
+const ARROW_MIN_PX = 6
+const markerKind = (v: string | undefined): MarkerKind | undefined => {
+  if (!v || v === 'none') return undefined
+  return (MARKER_KINDS as readonly string[]).includes(v) ? (v as MarkerKind) : 'arrow'
+}
+const markerId = (k: MarkerKind) => `ppt-arrow-${uid}-${k}`
+const headKind = computed(() => markerKind(lineProps.value?.head))
+const tailKind = computed(() => markerKind(lineProps.value?.tail))
+const markers = computed(() => MARKER_KINDS.filter((k) => k === headKind.value || k === tailKind.value))
+const markerStart = computed(() => (headKind.value ? `url(#${markerId(headKind.value)})` : undefined))
+const markerEnd = computed(() => (tailKind.value ? `url(#${markerId(tailKind.value)})` : undefined))
+/** marker の一辺 px（viewBox 0 0 10 10 をこの大きさに描く） */
+const markerSize = computed(() => Math.max(ARROW_MIN_PX, lineWidth.value * ARROW_SCALE))
+/** 開いた V 字の線幅（viewBox の単位）。本体の線と同じ太さに見せる */
+const markerStroke = computed(() => (lineWidth.value * 10) / markerSize.value)
+
+const layers = computed(() =>
+  geometry.value.paths.map((p, i) => ({
+    key: i,
+    d: p.d,
+    fill: p.fill === 'none' ? 'none' : fillColor.value,
+    shade: p.fill !== 'none' && fillColor.value !== 'none' ? SHADE[p.fill] : undefined,
+    stroke: p.stroke && !!lineProps.value,
+    // 矢じりは開いた path（Z で閉じない）の始点・終点に付ける
+    open: !/Z\s*$/.test(p.d),
+  })),
+)
+/** 反転は SVG の中で枠の中心に対して */
+const flipTransform = computed(() => {
+  if (!props.flipH && !props.flipV) return undefined
+  return `translate(${props.flipH ? W.value : 0} ${props.flipV ? H.value : 0}) scale(${props.flipH ? -1 : 1} ${props.flipV ? -1 : 1})`
+})
+const svgAttrs = computed(() => (isLine.value ? { class: 'ppt-shape-line' } : { class: 'ppt-shape-svg', width: W.value, height: H.value, viewBox: `0 0 ${W.value} ${H.value}` }))
+
 const style = computed(() => {
-  const s: Record<string, string | undefined> = {
+  // flipV は文字を 180 度回すので、上下の寄せも入れ替わって見える（PowerPoint と同じ）
+  const valign = props.flipV ? (props.valign === 'top' ? 'bottom' : props.valign === 'bottom' ? 'top' : 'middle') : props.valign
+  return {
     position: positioned.value ? 'absolute' : 'relative',
     left: props.x !== undefined ? `${props.x}px` : undefined,
     top: props.y !== undefined ? `${props.y}px` : undefined,
     width: props.w !== undefined ? `${props.w}px` : undefined,
-    height: props.h !== undefined ? `${props.h}px` : props.type === 'line' ? '0px' : undefined,
-    minHeight: props.h === undefined && props.type !== 'line' ? '2em' : undefined,
+    height: props.h !== undefined ? `${props.h}px` : isLine.value ? '0px' : undefined,
+    minHeight: props.h === undefined && !isLine.value ? '2em' : undefined,
     transform: props.rotate ? `rotate(${props.rotate}deg)` : undefined,
     textAlign: props.align,
     fontSize: props.size !== undefined ? `${props.size}px` : undefined,
     color: props.color,
     display: 'flex',
     flexDirection: 'column',
-    justifyContent: props.valign === 'middle' ? 'center' : props.valign === 'bottom' ? 'flex-end' : 'flex-start',
+    justifyContent: valign === 'middle' ? 'center' : valign === 'bottom' ? 'flex-end' : 'flex-start',
     boxSizing: 'border-box',
     overflow: 'visible',
-  }
-  if (isCssShape.value) {
-    s.background = fillColor.value === 'none' ? undefined : fillColor.value
-    if (lineProps.value) {
-      const l = lineProps.value
-      s.border = `${l.width ?? 1}px ${l.dash === 'dash' ? 'dashed' : l.dash === 'dot' ? 'dotted' : 'solid'} ${l.color ?? '#000000'}`
-    }
-    if (props.type === 'roundRect') s.borderRadius = `${props.radius}px`
-  }
-  return s
+  } as Record<string, string | undefined>
 })
 
-/** viewBox 0 0 100 100 の多角形。preserveAspectRatio="none" で枠に合わせる（PowerPoint の preset の既定 adj とは別物。近似） */
-const polygon = computed(() => {
-  switch (props.type) {
-    case 'rightArrow':
-      return '0,25 60,25 60,0 100,50 60,100 60,75 0,75'
-    case 'leftArrow':
-      return '100,25 40,25 40,0 0,50 40,100 40,75 100,75'
-    case 'upArrow':
-      return '25,100 25,40 0,40 50,0 100,40 75,40 75,100'
-    case 'downArrow':
-      return '25,0 25,60 0,60 50,100 100,60 75,60 75,0'
-    case 'diamond':
-      return '50,0 100,50 50,100 0,50'
-    case 'triangle':
-      return '50,0 100,100 0,100'
-    case 'hexagon':
-      return '25,0 75,0 100,50 75,100 25,100 0,50'
-    default:
-      return undefined
+const textStyle = computed(() => {
+  const s: Record<string, string | undefined> = { padding: paddingCss.value }
+  if (props.flipV) s.transform = 'rotate(180deg)'
+  if (props.w !== undefined && props.h !== undefined) {
+    // 文字の枠（反転した形の上での位置）を margin で空ける。上下の寄せは親の flex が枠の中で行う。
+    // w h がどちらも props なので、margin が枠の大きさに効いても測り直しは起きない
+    const { l, t, r, b } = geometry.value.textRect
+    const left = props.flipH ? W.value - r : l
+    const right = props.flipH ? l : W.value - r
+    const top = props.flipV ? H.value - b : t
+    const bottom = props.flipV ? t : H.value - b
+    s.margin = [top, right, bottom, left].map((v) => `${Math.round(v * 100) / 100}px`).join(' ')
   }
+  return s
 })
 
 const opts = computed(() => {
@@ -133,6 +240,9 @@ const opts = computed(() => {
     align: props.align,
   }
   if (props.type === 'roundRect') o.radius = props.radius
+  if (props.adj) o.adj = props.adj
+  if (props.flipH) o.flipH = true
+  if (props.flipV) o.flipV = true
   return JSON.stringify(o)
 })
 </script>
@@ -148,42 +258,68 @@ const opts = computed(() => {
     :style="style"
     class="ppt-shape"
   >
-    <svg
-      v-if="!isCssShape && props.type !== 'line'"
-      class="ppt-shape-svg"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-      aria-hidden="true"
-    >
-      <ellipse v-if="props.type === 'ellipse'" cx="50" cy="50" rx="50" ry="50" :fill="fillColor" :stroke="lineProps?.color ?? 'none'" :stroke-width="lineProps?.width ?? 0" :stroke-dasharray="dashArray" vector-effect="non-scaling-stroke" />
-      <polygon v-else :points="polygon" :fill="fillColor" :stroke="lineProps?.color ?? 'none'" :stroke-width="lineProps?.width ?? 0" :stroke-dasharray="dashArray" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
-    </svg>
-    <svg v-else-if="props.type === 'line'" class="ppt-shape-line" aria-hidden="true">
-      <defs>
-        <marker :id="`ppt-arrow-${uid}`" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" :fill="lineProps?.color ?? '#000000'" />
+    <svg v-bind="svgAttrs" aria-hidden="true">
+      <defs v-if="markers.length">
+        <marker
+          v-for="k in markers"
+          :id="markerId(k)"
+          :key="k"
+          viewBox="0 0 10 10"
+          markerUnits="userSpaceOnUse"
+          :markerWidth="markerSize"
+          :markerHeight="markerSize"
+          :refX="k === 'oval' || k === 'diamond' ? 5 : 10"
+          refY="5"
+          orient="auto-start-reverse"
+          overflow="visible"
+        >
+          <path v-if="k === 'arrow'" d="M1,1 L10,5 L1,9" fill="none" :stroke="lineColor" :stroke-width="markerStroke" stroke-linecap="round" stroke-linejoin="round" />
+          <path v-else-if="k === 'stealth'" d="M0,0 L10,5 L0,10 L3,5 z" :fill="lineColor" />
+          <circle v-else-if="k === 'oval'" cx="5" cy="5" r="5" :fill="lineColor" />
+          <path v-else-if="k === 'diamond'" d="M0,5 L5,0 L10,5 L5,10 z" :fill="lineColor" />
+          <path v-else d="M0,0 L10,5 L0,10 z" :fill="lineColor" />
         </marker>
       </defs>
       <line
+        v-if="isLine"
         x1="0" y1="0" x2="100%" :y2="props.h ? '100%' : '0'"
-        :stroke="lineProps?.color ?? '#000000'"
-        :stroke-width="lineProps?.width ?? 1"
+        :stroke="lineColor"
+        :stroke-width="lineWidth"
         :stroke-dasharray="dashArray"
-        :marker-start="lineProps?.head && lineProps.head !== 'none' ? `url(#ppt-arrow-${uid})` : undefined"
-        :marker-end="lineProps?.tail && lineProps.tail !== 'none' ? `url(#ppt-arrow-${uid})` : undefined"
+        :marker-start="markerStart"
+        :marker-end="markerEnd"
       />
+      <!-- 塗りを全部描いてから線を描く（chartPlus などは線の path が塗りの path より先に定義されている） -->
+      <g v-else :transform="flipTransform">
+        <template v-for="p in layers" :key="`f${p.key}`">
+          <path v-if="p.fill !== 'none'" :d="p.d" :fill="p.fill" stroke="none" />
+          <path v-if="p.shade" :d="p.d" :fill="p.shade.color" :fill-opacity="p.shade.opacity" stroke="none" />
+        </template>
+        <template v-for="p in layers" :key="`s${p.key}`">
+          <path
+            v-if="p.stroke"
+            :d="p.d"
+            fill="none"
+            :stroke="lineColor"
+            :stroke-width="lineWidth"
+            :stroke-dasharray="dashArray"
+            stroke-linejoin="round"
+            :marker-start="p.open ? markerStart : undefined"
+            :marker-end="p.open ? markerEnd : undefined"
+          />
+        </template>
+      </g>
     </svg>
-    <div v-if="props.type !== 'line'" class="ppt-shape-text" :style="{ padding: paddingCss }"><slot /></div>
+    <div v-if="!isLine" class="ppt-shape-text" :style="textStyle"><slot /></div>
   </div>
 </template>
 
 <style scoped>
 .ppt-shape-svg {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible; /* 輪郭線の外半分を切らない */
+  left: 0;
+  top: 0;
+  overflow: visible; /* 輪郭線の外半分と矢じりを切らない */
 }
 .ppt-shape-line {
   position: absolute;
