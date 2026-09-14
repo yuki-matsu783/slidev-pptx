@@ -43,6 +43,19 @@ check は `packages/slidev-addon-pptx/src/opc/check.ts` の結果です（error 
 | `20-single-chartPlus.pptx` | chartPlus を 1 つだけ置いた 1 枚（文字・調整値なし） | 0 | 19 KB |
 | `20-single-lineInv.pptx` | lineInv を 1 つだけ置いた 1 枚（文字・調整値なし） | 0 | 19 KB |
 | `20-single-roundRect-adj.pptx` | roundRect に adj 50000 を付けて 1 つだけ置いた 1 枚（文字なし） | 0 | 19 KB |
+| `30-cxnsp.pptx` | 00 のうち、prst がコネクタ 9 種・line・lineInv の `<p:sp>` 16 個を `<p:cxnSp>` に書き換える（`p:nvSpPr` → `p:nvCxnSpPr`、`p:cNvSpPr` → `p:cNvCxnSpPr`）。id・name・xfrm（反転）・ln（矢じり）・avLst・塗りはそのまま。txBody を持つものは無かった | 0 | 51 KB |
+| `31-cxnsp-no-fill.pptx` | 30 から、その 16 個の `<p:spPr>` の直下の塗り（solidFill 14 個、noFill 2 個）を外す。PowerPoint が自分で書くコネクタと同じく、塗りの要素が無い形 | 0 | 51 KB |
+| `32-only-connectors-cxnsp.pptx` | 19 の 11 個を、30 と同じ規則で `<p:cxnSp>` にする（塗りはそのまま） | 0 | 19 KB |
+
+### 30〜32 の読み方
+
+仮説は「PowerPoint はコネクタと線を `<p:cxnSp>` で書くのに、こちらは `<p:sp>` で出している」です。30〜32 は、要素名（31 は塗りも）だけを変えています。
+図形の数・id・名前・座標・反転・prst は 00 / 19 と同じで、ECMA-376 の XSD の検証結果も 00 と同じです（`presentation.xml` の `notesMasterIdLst` の 1 件だけ）。
+
+- 00 で修復が出て、30 で出なければ: `<p:sp>` で出していることが原因
+- 30 でも出て、31 で出なければ: `<p:cxnSp>` に塗りを持たせていることが原因（XSD では許されるが、PowerPoint は書かない形）
+- 30 と 31 の両方で出れば: この仮説は外れか、別の原因も残っている。14-no-connectors の結果と合わせて見る
+- 19 で出て、32 で出なければ: コネクタだけの 1 枚でも同じ結論。19 で出ないなら、32 は判断の材料にならない
 
 ## 結果（ここに書き込んでください）
 
@@ -74,6 +87,9 @@ check は `packages/slidev-addon-pptx/src/opc/check.ts` の結果です（error 
 | `20-single-chartPlus.pptx` |  |  |
 | `20-single-lineInv.pptx` |  |  |
 | `20-single-roundRect-adj.pptx` |  |  |
+| `30-cxnsp.pptx` |  |  |
+| `31-cxnsp-no-fill.pptx` |  |  |
+| `32-only-connectors-cxnsp.pptx` |  |  |
 
 ## お願い: 修復後の PPTX
 
