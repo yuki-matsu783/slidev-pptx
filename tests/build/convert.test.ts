@@ -353,6 +353,18 @@ describe('convert: 合成の Capture（範囲指定・調整値の範囲）', ()
     expect(c.adjust[1]).toEqual({ 'Shape 1': { adj: 50000 }, 'Shape 2': { adj: 0 } })
   })
 
+  it('roundRect で adj.adj が数でないときは捨てて W-SHAPE 1 件、radius から換算した adj を使う', async () => {
+    const { ctx: c, out } = await run([slideOf(1, [
+      shape('s1-e1', { adj: { adj: '10000' }, frame: { radius: 10, inset: [0, 0, 0, 0] } }),
+    ])], 1)
+    // 100×40、radius 10 → round(10 / min(100, 40) × 100000) = 25000（文字列の 10000 でも既定の 16667 でもない）
+    const doc = await (await openPptx(out)).xml('ppt/slides/slide1.xml')
+    expect(gdsOf(doc, 'Shape 1')).toEqual([['adj', 'val 25000']])
+    const ws = c.report.warnings.filter((w) => w.code === 'W-SHAPE')
+    expect(ws).toHaveLength(1)
+    expect(ws[0].message).toContain('adj')
+  })
+
   it('線の知らない矢じりも arrow にして W-SHAPE（図形と同じ文面）。知っている値と none だけなら出さない', async () => {
     const line = (id: string, y: number, head?: string, tail?: string): LineElement => ({
       id, name: '', source: 'ppt', kind: 'line', box: { x: 10, y, w: 200, h: 0 }, boxSource: 'prop',
