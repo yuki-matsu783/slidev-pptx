@@ -82,7 +82,7 @@ props を「書式の上書き」に絞り、Markdown の中身は slot に任�
 - どちらかが無ければ（幅か高さが内容で決まるときは）枠全体に置き、`padding` だけを空ける。文字の枠の余白は枠の大きさに比例し、枠の大きさは文字の量で決まるので循環するため。幅が内容で決まる図形で文字の枠を使うと、余白が幅に比例して増えて測り直しが止まらず、書き出しが壊れた（レビューで実測。幅が 3300 万 px に達した）。
 - `flipV` のとき文字は 180 度回る。`valign` の上下も入れ替わって見える（PowerPoint と同じ）。
 
-Capture: `kind: 'shape'`（`line` は `kind: 'line'`）。`shape` は `type` の名前のまま。`adj` は有限の数値のキーだけ、`flipH` `flipV` は `true` のときだけ、`line.head` `line.tail` は `'none'` を除いて `arrow` に入れる（native-export.md §2）。`rotate` があるとき `box` は回転前の枠（`data-ppt-box` と `data-ppt-opts.rotate` から復元。回転後の外接矩形は使わない）。`rotate` と実測の大きさを併用するときは、大きさが変わるたびに回転前の枠を測り直す（大きさの変わらない位置だけの移動は追わない）。
+Capture: `kind: 'shape'`（`line` は `kind: 'line'`）。`shape` は `type` の名前のまま。`adj` は `data-ppt-opts` の値のまま（数でない値も入れ、捨てて `W-SHAPE` を出すのは変換の `normalizeAdjust`。収集で捨てると警告が出ない）、`flipH` `flipV` は `true` のときだけ、`line.head` `line.tail` は `'none'` を除いて `arrow` に入れる（native-export.md §2）。`rotate` があるとき `box` は回転前の枠（`data-ppt-box` と `data-ppt-opts.rotate` から復元。回転後の外接矩形は使わない）。`rotate` と実測の大きさを併用するときは、大きさが変わるたびに回転前の枠を測り直す（大きさの変わらない位置だけの移動は追わない）。
 PPTX: 名前をそのまま `<a:prstGeom prst>` に出し、調整値は後処理で `<a:avLst>` に書く（native-export.md §3.2、§4.3）。PowerPoint は同じ定義で描くので、形が一致し、開いた後に調整ハンドルでも直せる。
 
 `type` を PowerPoint の図形の名前にし、形を定義の数式から描く（docs/adr/0002）。

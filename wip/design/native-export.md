@@ -151,7 +151,7 @@ interface ShapeElement extends ElementBase {
   rotate?: number
   paragraphs?: Paragraph[]      // 図形の中の文字
   valign?: 'top' | 'middle' | 'bottom'
-  adj?: Record<string, number>  // 調整値。キーは定義の avLst の名前（adj adj1 …）、値は ECMA の単位（例 50000）。data-ppt-opts の adj のうち有限の数値だけ。定義に無い名前の扱いは Node（§4.3）
+  adj?: Record<string, unknown>  // 調整値。キーは定義の avLst の名前（adj adj1 …）、値は ECMA の単位（例 50000）。data-ppt-opts の adj の値のまま（数でない値も入る）。定義に無い名前・数でない値・範囲外を捨てて W-SHAPE を出すのは Node（§4.3）
   flipH?: boolean               // true のときだけ入れる
   flipV?: boolean               // true のときだけ入れる
   arrow?: { head?: string; tail?: string }   // 開いた path の始点（head）・終点（tail）の矢じり。line.head / tail のうち 'none' 以外。値は LineElement と同じ

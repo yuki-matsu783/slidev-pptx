@@ -116,7 +116,7 @@ exit code: 0 成功 / 1 書き出し失敗または OPC エラー（`--strict` �
 <PptShape type="bentConnector3" :x="60" :y="180" :w="200" :h="100" :line="{ color: '#7c3aed', width: 2, tail: 'arrow' }" />
 ```
 
-- `adj` を書かないキーは PowerPoint の既定です。キーの名前は図形ごとに違います（`adj`、`adj1` `adj2` …）。定義に無いキーや範囲外の値は、画面でも PowerPoint でも捨てられ、`W-SHAPE` が出ます
+- `adj` を書かないキーは PowerPoint の既定です。キーの名前は図形ごとに違います（`adj`、`adj1` `adj2` …）。定義に無いキー、数でない値、範囲外の値は、画面でも PowerPoint でも捨てられ、`W-SHAPE` が出ます
 - 文字は、`w` と `h` を両方書いた図形では PowerPoint と同じ文字の枠（楕円なら内接する矩形）に入り、どちらかを書かない図形では枠全体に入ります。`h` だけ書いた図形は、PowerPoint で開くと文字の位置が少しずれます
 - 矢じり（`line` の `head` `tail`）は `arrow`（開いた V 字）`stealth` `triangle` `oval` `diamond` です。大きさは線幅のおよそ 3 倍です。未知の値は画面でも PowerPoint でも `arrow` になり、`W-SHAPE` が出ます
 - 全 187 種を並べたデッキが `tests/fixtures/deck/shapes.md` にあります。名前を探したり、形と調整値の効き方を見たりするのに使えます
@@ -135,7 +135,7 @@ pnpm exec slidev-pptx export tests/fixtures/deck/shapes.md -o dist/shapes.pptx  
   - `W-CSS` 再現できない装飾や色を捨てた / `W-MATH-INLINE` インライン数式を文字にした / `W-LI-BLOCK` 箇条書きの中の表や画像を無視した
   - `W-LAYOUT` 対応表に無いレイアウト、またはプレースホルダーに入れられず自由配置にした / `W-OVERFLOW` 枠に収まらないので縮小率を書いた / `W-OFFSLIDE` スライドの外に掛かるので寄せた
   - `W-IMAGE` 画像を取得できず灰色の矩形にした / `W-LINK` 相対リンクや範囲外のスライドへのリンクを外した
-  - `W-SHAPE` `PptShape` の未知の図形名を `rect` にした、定義に無いか範囲外の調整値を捨てた、未知の矢じりを `arrow` にした（`type="line"` も）
+  - `W-SHAPE` `PptShape` の未知の図形名を `rect` にした、定義に無いか数でないか範囲外の調整値を捨てた、未知の矢じりを `arrow` にした（`type="line"` も）
   - `W-HIDDEN` 透明（opacity 0）かスライドの外の要素を飛ばした / `W-INLINE` 段落の中の svg などを無視した
   - `W-NESTED-PPT` `W-PPT-CONTENT` 部品の入れ子や部品の中の表 / `W-DARK` ダーク固定のデッキ / `W-TRANSITION`
   - `W-RENDER` Slidev の描画エラー、ブラウザのエラー、または UnoCSS のクラスが効かないページを測った（位置と色が Slidev と違うかもしれない）
